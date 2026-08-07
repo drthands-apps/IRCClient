@@ -26,6 +26,13 @@ class ServersViewModel(
 
     fun getDiscoveredChannels(serverId: Long) = repository.getDiscoveredChannels(serverId)
 
+    fun refreshChannelList(serverId: Long) {
+        viewModelScope.launch {
+            val engine = ircManager.getEngine(serverId)
+            engine?.send("LIST")
+        }
+    }
+
     fun joinChannel(serverId: Long, channelName: String) {
         viewModelScope.launch {
             val engine = ircManager.getEngine(serverId)

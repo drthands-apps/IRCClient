@@ -21,10 +21,27 @@ class IrcRepository(
     // Channels
     fun getChannelsForServer(serverId: Long): Flow<List<ChannelEntity>> = 
         channelDao.getChannelsForServer(serverId)
+
+    fun getAllChannels(): Flow<List<ChannelEntity>> = channelDao.getAllChannels()
+    
+    suspend fun getChannel(serverId: Long, name: String): ChannelEntity? = 
+        channelDao.getChannel(serverId, name)
     
     suspend fun insertChannel(channel: ChannelEntity) = channelDao.insertChannel(channel)
     suspend fun updateChannel(channel: ChannelEntity) = channelDao.updateChannel(channel)
     suspend fun deleteChannel(channel: ChannelEntity) = channelDao.deleteChannel(channel)
+
+    suspend fun clearInactiveTargets() {
+        // Logic to clear messages for targets that don't have saveLog enabled
+        // and aren't currently "joined" or active in some way.
+        // For now, let's just clear messages where target is not in a 'saveLog' channel
+        val channels = channelDao.getChannelsToClear()
+        channels.forEach { channel ->
+             messageDao.clearHistory(channel.serverId, channel.name)
+        }
+        // Also clear PMs that don't have a channel entry with saveLog = true
+        messageDao.clearOrphanMessages()
+    }
 
     // Messages
     fun getMessagesForTarget(serverId: Long, target: String): Flow<List<MessageEntity>> =

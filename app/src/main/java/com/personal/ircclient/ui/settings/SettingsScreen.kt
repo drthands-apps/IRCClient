@@ -15,10 +15,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
+import com.personal.ircclient.data.local.entities.EventDisplayMode
 import com.personal.ircclient.ui.chats.ChatsViewModel
 
 @Composable
@@ -91,6 +93,41 @@ fun SettingsScreen(viewModel: ChatsViewModel) {
                     onCheckedChange = { viewModel.setShowEventsInRoomEnabled(it) }
                 )
             }
+            
+            if (viewModel.showEventsInRoom) {
+                Column(modifier = Modifier.padding(start = 32.dp)) {
+                    EventSettingItem(
+                        title = "Joins",
+                        checked = viewModel.joinDisplayMode == EventDisplayMode.ROOM,
+                        onCheckedChange = { viewModel.setJoinDisplayEnabled(it) }
+                    )
+                    EventSettingItem(
+                        title = "Parts",
+                        checked = viewModel.partDisplayMode == EventDisplayMode.ROOM,
+                        onCheckedChange = { viewModel.setPartDisplayEnabled(it) }
+                    )
+                    EventSettingItem(
+                        title = "Quits",
+                        checked = viewModel.quitDisplayMode == EventDisplayMode.ROOM,
+                        onCheckedChange = { viewModel.setQuitDisplayEnabled(it) }
+                    )
+                    EventSettingItem(
+                        title = "Nick Changes",
+                        checked = viewModel.nickChangeDisplayMode == EventDisplayMode.ROOM,
+                        onCheckedChange = { viewModel.setNickChangeDisplayEnabled(it) }
+                    )
+                    EventSettingItem(
+                        title = "Kicks",
+                        checked = viewModel.kickDisplayMode == EventDisplayMode.ROOM,
+                        onCheckedChange = { viewModel.setKickDisplayEnabled(it) }
+                    )
+                    EventSettingItem(
+                        title = "Bans",
+                        checked = viewModel.banDisplayMode == EventDisplayMode.ROOM,
+                        onCheckedChange = { viewModel.setBanDisplayEnabled(it) }
+                    )
+                }
+            }
         }
 
         SettingsSection(title = "Privacy & Security") {
@@ -119,6 +156,28 @@ fun SettingsScreen(viewModel: ChatsViewModel) {
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.align(Alignment.CenterHorizontally),
             color = MaterialTheme.colorScheme.outline
+        )
+    }
+}
+
+@Composable
+fun EventSettingItem(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp, horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(title, style = MaterialTheme.typography.bodyMedium)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.scale(0.7f)
         )
     }
 }

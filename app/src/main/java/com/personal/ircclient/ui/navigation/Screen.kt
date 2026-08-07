@@ -17,6 +17,9 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
         fun createRoute(serverId: Long) = "discovery/$serverId"
     }
     object ChatDetail : Screen("chat_detail/{serverId}/{target}", "Chat", Icons.Default.Chat) {
-        fun createRoute(serverId: Long, target: String) = "chat_detail/$serverId/$target"
+        fun createRoute(serverId: Long, target: String): String {
+            val encodedTarget = java.net.URLEncoder.encode(target, "UTF-8")
+            return "chat_detail/$serverId/$encodedTarget"
+        }
     }
 }

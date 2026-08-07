@@ -11,7 +11,7 @@ import com.personal.ircclient.data.local.entities.*
 
 @Database(
     entities = [ServerEntity::class, ChannelEntity::class, MessageEntity::class, UserEntity::class, ChannelDiscoveryEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

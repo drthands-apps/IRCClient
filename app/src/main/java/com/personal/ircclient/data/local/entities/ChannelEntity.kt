@@ -21,5 +21,9 @@ data class ChannelEntity(
     val name: String,
     val password: String? = null,
     val isJoined: Boolean = false,
-    val autoJoin: Boolean = true
+    val autoJoin: Boolean = true,
+    val isBanned: Boolean = false,
+    val unreadCount: Int = 0,
+    val saveLog: Boolean = false,
+    val topic: String? = null
 )

@@ -8,6 +8,9 @@ import androidx.lifecycle.viewModelScope
 import com.personal.ircclient.core.IrcManager
 import com.personal.ircclient.core.security.EncryptionManager
 import com.personal.ircclient.data.local.dao.TargetInfo
+import com.personal.ircclient.data.local.entities.ChannelDiscoveryEntity
+import com.personal.ircclient.data.local.entities.ChannelEntity
+import com.personal.ircclient.data.local.entities.EventDisplayMode
 import com.personal.ircclient.data.local.entities.HandshakeStatus
 import com.personal.ircclient.data.local.entities.MessageEntity
 import com.personal.ircclient.data.local.entities.MessageType
@@ -25,17 +28,104 @@ class ChatsViewModel(
 
     var isTtsActive by mutableStateOf(false)
         private set
-    
+
     var showEventsInRoom by mutableStateOf(true)
+        private set
+    
+    var joinDisplayMode by mutableStateOf(EventDisplayMode.ROOM)
+        private set
+
+    var partDisplayMode by mutableStateOf(EventDisplayMode.ROOM)
+        private set
+
+    var quitDisplayMode by mutableStateOf(EventDisplayMode.ROOM)
+        private set
+    
+    var nickChangeDisplayMode by mutableStateOf(EventDisplayMode.ROOM)
+        private set
+
+    var kickDisplayMode by mutableStateOf(EventDisplayMode.ROOM)
+        private set
+
+    var banDisplayMode by mutableStateOf(EventDisplayMode.ROOM)
         private set
 
     fun setTtsEnabled(enabled: Boolean) {
         isTtsActive = enabled
     }
-    
+
     fun setShowEventsInRoomEnabled(enabled: Boolean) {
         showEventsInRoom = enabled
-        ircManager.setShowEventsInRoom(enabled)
+        val mode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        joinDisplayMode = mode
+        partDisplayMode = mode
+        quitDisplayMode = mode
+        nickChangeDisplayMode = mode
+        kickDisplayMode = mode
+        banDisplayMode = mode
+        updateEngineSettings()
+    }
+
+    fun setJoinDisplayEnabled(enabled: Boolean) {
+        joinDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        updateEngineSettings()
+    }
+
+    fun setPartDisplayEnabled(enabled: Boolean) {
+        partDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        updateEngineSettings()
+    }
+
+    fun setQuitDisplayEnabled(enabled: Boolean) {
+        quitDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        updateEngineSettings()
+    }
+
+    fun setNickChangeDisplayEnabled(enabled: Boolean) {
+        nickChangeDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        updateEngineSettings()
+    }
+
+    fun setKickDisplayEnabled(enabled: Boolean) {
+        kickDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        updateEngineSettings()
+    }
+
+    fun setBanDisplayEnabled(enabled: Boolean) {
+        banDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        updateEngineSettings()
+    }
+    
+    fun updateJoinPartDisplayMode(mode: EventDisplayMode) {
+        joinDisplayMode = mode
+        partDisplayMode = mode
+        quitDisplayMode = mode
+        updateEngineSettings()
+    }
+
+    fun updateNickChangeDisplayMode(mode: EventDisplayMode) {
+        nickChangeDisplayMode = mode
+        updateEngineSettings()
+    }
+
+    fun updateKickBanDisplayMode(mode: EventDisplayMode) {
+        kickDisplayMode = mode
+        banDisplayMode = mode
+        updateEngineSettings()
+    }
+
+    private fun updateEngineSettings() {
+        ircManager.activeServers.value.forEach { id ->
+            val engine = ircManager.getEngine(id)
+            engine?.updateEventSettings(
+                join = joinDisplayMode,
+                part = partDisplayMode,
+                quit = quitDisplayMode,
+                nick = nickChangeDisplayMode,
+                kick = kickDisplayMode,
+                ban = banDisplayMode
+            )
+        }
     }
 
     init {
@@ -63,6 +153,55 @@ class ChatsViewModel(
     val activeTargets: StateFlow<List<TargetInfo>> = repository.getAllActiveTargets()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val totalUnreadCount: StateFlow<Int> = activeTargets.map { targets ->
+        targets.sumOf { it.unreadCount ?: 0 }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    fun clearUnreadCount(serverId: Long, target: String) {
+        viewModelScope.launch {
+            val channel = repository.getChannel(serverId, target)
+            if (channel != null) {
+                repository.updateChannel(channel.copy(unreadCount = 0))
+            }
+        }
+    }
+
+    fun closeChat(serverId: Long, target: String) {
+        viewModelScope.launch {
+            val channel = repository.getChannel(serverId, target)
+            if (channel != null && channel.isJoined) {
+                val engine = ircManager.getEngine(serverId)
+                engine?.send("PART $target")
+            }
+            
+            if (channel == null || !channel.saveLog) {
+                repository.clearHistory(serverId, target)
+            }
+
+            if (channel != null) {
+                 repository.updateChannel(channel.copy(unreadCount = 0, isJoined = false))
+            }
+        }
+    }
+
+    fun setSaveLog(serverId: Long, target: String, enabled: Boolean) {
+        viewModelScope.launch {
+            val channel = repository.getChannel(serverId, target)
+            if (channel != null) {
+                repository.updateChannel(channel.copy(saveLog = enabled))
+            } else {
+                repository.insertChannel(
+                    ChannelEntity(
+                        serverId = serverId,
+                        name = target,
+                        saveLog = enabled,
+                        isJoined = false
+                    )
+                )
+            }
+        }
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val allChatUsers: StateFlow<List<UserEntity>> = repository.allServers
         .flatMapLatest { servers ->
@@ -79,8 +218,36 @@ class ChatsViewModel(
             ?: MutableStateFlow(emptyList())
     }
 
+    fun isUserOp(serverId: Long, channelName: String, nickname: String): Flow<Boolean> {
+        val engine = ircManager.getEngine(serverId) ?: return flowOf(false)
+        return engine.userPrefixes.map { allPrefixes ->
+            val channelPrefixes = allPrefixes[channelName] ?: emptyMap()
+            val prefix = channelPrefixes[nickname] ?: ""
+            prefix == "@" || prefix == "&" || prefix == "~"
+        }
+    }
+
+    fun ignoreUser(serverId: Long, nickname: String, ignore: Boolean) {
+        viewModelScope.launch {
+            val user = repository.getUser(nickname, serverId)
+            if (user != null) {
+                repository.insertUser(user.copy(isIgnored = ignore))
+            } else {
+                repository.insertUser(UserEntity(nickname = nickname, serverId = serverId, isIgnored = ignore))
+            }
+        }
+    }
+
+    private fun isChannel(target: String): Boolean {
+        return target.startsWith("#") || target.startsWith("&") || target.startsWith("+") || target.startsWith("!")
+    }
+
+    private fun normalizeTarget(target: String): String {
+        return if (isChannel(target)) target.lowercase() else target
+    }
+
     fun getMessages(serverId: Long, target: String): Flow<List<MessageEntity>> {
-        val finalTarget = if (target.startsWith("#")) target.lowercase() else target
+        val finalTarget = normalizeTarget(target)
         return repository.getMessagesForTarget(serverId, finalTarget).map { messages ->
             val user = repository.getUser(target, serverId)
             val key = user?.encryptionKey
@@ -116,6 +283,23 @@ class ChatsViewModel(
 
     fun getServerName(serverId: Long): Flow<String> = repository.allServers.map { servers ->
         servers.find { it.id == serverId }?.name ?: "Server $serverId"
+    }
+
+    fun getAvailableCommands(serverId: Long, target: String, isOp: Boolean): List<String> {
+        val engine = ircManager.getEngine(serverId)
+        return engine?.getAvailableCommands(target, isOp) ?: emptyList()
+    }
+
+    fun getCurrentNickname(serverId: Long): StateFlow<String> {
+        val engine = ircManager.getEngine(serverId)
+        return engine?.currentNicknameFlow ?: MutableStateFlow("Unknown")
+    }
+
+    fun setNickname(serverId: Long, newNick: String) {
+        viewModelScope.launch {
+            val engine = ircManager.getEngine(serverId)
+            engine?.send("NICK $newNick")
+        }
     }
 
     fun initiateSecureChat(serverId: Long, nickname: String) {
@@ -161,8 +345,41 @@ class ChatsViewModel(
             val engine = ircManager.getEngine(serverId)
             if (engine != null) {
                 if (text.startsWith("/")) {
-                    val command = text.substring(1)
-                    engine.send(command)
+                    val handled = engine.executeCommand(target, text)
+                    if (!handled) {
+                        engine.send(text.substring(1))
+                    }
+                    
+                    // Special case for local UI actions
+                    if (text.startsWith("/ME ", ignoreCase = true)) {
+                        val action = text.substring(4)
+                        repository.insertMessage(
+                            MessageEntity(
+                                serverId = serverId,
+                                target = target,
+                                sender = "me",
+                                text = "* me $action",
+                                type = MessageType.TEXT
+                            )
+                        )
+                    }
+
+                    if (text.startsWith("/QUERY ", ignoreCase = true)) {
+                         // The command already sent a message or validated, 
+                         // but we might want to ensure the target exists in our local list
+                         val newTarget = text.substring(7).trim().substringBefore(" ")
+                         if (newTarget.isNotEmpty()) {
+                             repository.insertMessage(
+                                 MessageEntity(
+                                     serverId = serverId,
+                                     target = newTarget,
+                                     sender = "System",
+                                     text = "Started query with $newTarget",
+                                     isSystemMessage = true
+                                 )
+                             )
+                         }
+                    }
                     return@launch
                 }
                 
@@ -183,7 +400,7 @@ class ChatsViewModel(
                 engine.send("PRIVMSG $target :$finalMessage")
                 
                 // Normalize target
-                val finalTarget = if (target.startsWith("#")) target.lowercase() else target
+                val finalTarget = normalizeTarget(target)
 
                 repository.insertMessage(
                     MessageEntity(
@@ -216,7 +433,7 @@ class ChatsViewModel(
                 engine.send("PRIVMSG $target :$finalMessage")
                 
                 // Normalize target
-                val finalTarget = if (target.startsWith("#")) target.lowercase() else target
+                val finalTarget = normalizeTarget(target)
 
                 repository.insertMessage(
                     MessageEntity(

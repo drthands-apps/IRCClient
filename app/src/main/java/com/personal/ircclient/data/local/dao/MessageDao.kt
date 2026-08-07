@@ -15,11 +15,23 @@ interface MessageDao {
     @Query("DELETE FROM messages WHERE serverId = :serverId AND target = :target")
     suspend fun clearHistory(serverId: Long, target: String)
 
-    @Query("SELECT DISTINCT target, serverId FROM messages")
+    @Query("""
+        SELECT DISTINCT m.target, m.serverId, c.unreadCount, c.isJoined, c.isBanned, c.saveLog, c.topic
+        FROM messages m
+        LEFT JOIN channels c ON m.serverId = c.serverId AND m.target = c.name
+    """)
     fun getAllActiveTargets(): Flow<List<TargetInfo>>
+
+    @Query("DELETE FROM messages WHERE NOT EXISTS (SELECT 1 FROM channels WHERE channels.serverId = messages.serverId AND channels.name = messages.target AND channels.saveLog = 1)")
+    suspend fun clearOrphanMessages()
 }
 
 data class TargetInfo(
     val target: String,
-    val serverId: Long
+    val serverId: Long,
+    val unreadCount: Int?,
+    val isJoined: Boolean?,
+    val isBanned: Boolean?,
+    val saveLog: Boolean?,
+    val topic: String?
 )

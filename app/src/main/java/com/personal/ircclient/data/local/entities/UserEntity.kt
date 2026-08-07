@@ -9,6 +9,7 @@ data class UserEntity(
     val serverId: Long,
     val realName: String? = null,
     val isBlocked: Boolean = false,
+    val isIgnored: Boolean = false,
     val encryptionKey: String? = null,
     val secureHandshakeStatus: HandshakeStatus = HandshakeStatus.NONE,
     val notes: String? = null

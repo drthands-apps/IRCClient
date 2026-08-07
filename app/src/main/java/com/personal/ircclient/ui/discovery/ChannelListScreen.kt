@@ -27,6 +27,12 @@ fun ChannelListScreen(
 ) {
     val channels by viewModel.getDiscoveredChannels(serverId).collectAsState(initial = emptyList())
 
+    LaunchedEffect(serverId) {
+        if (channels.isEmpty()) {
+            viewModel.refreshChannelList(serverId)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(

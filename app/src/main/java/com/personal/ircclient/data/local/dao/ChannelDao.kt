@@ -9,6 +9,15 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE serverId = :serverId")
     fun getChannelsForServer(serverId: Long): Flow<List<ChannelEntity>>
 
+    @Query("SELECT * FROM channels WHERE serverId = :serverId AND name = :name LIMIT 1")
+    suspend fun getChannel(serverId: Long, name: String): ChannelEntity?
+
+    @Query("SELECT * FROM channels")
+    fun getAllChannels(): Flow<List<ChannelEntity>>
+
+    @Query("SELECT * FROM channels WHERE saveLog = 0 AND isJoined = 0")
+    suspend fun getChannelsToClear(): List<ChannelEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertChannel(channel: ChannelEntity): Long
 

@@ -10,6 +10,12 @@ class IrcManager(private val repository: IrcRepository) {
     private val connections = ConcurrentHashMap<Long, IrcEngine>()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     
+    init {
+        scope.launch {
+            repository.clearInactiveTargets()
+        }
+    }
+
     private val _activeServers = MutableStateFlow<Set<Long>>(emptySet())
     val activeServers: StateFlow<Set<Long>> = _activeServers.asStateFlow()
 

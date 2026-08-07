@@ -1,5 +1,6 @@
 package com.personal.ircclient.core
 
+import com.personal.ircclient.core.commands.CommandHandler
 import com.personal.ircclient.core.model.IrcConfig
 import com.personal.ircclient.core.model.IrcMessage
 import com.personal.ircclient.core.security.EncryptionManager
@@ -21,8 +22,37 @@ class IrcEngine(
     private val repository: IrcRepository? = null,
     private val sniffer: ScriptSniffer = ScriptSniffer()
 ) {
+    private val commandHandler = CommandHandler(this, repository)
+
+    private var joinMode = EventDisplayMode.ROOM
+    private var partMode = EventDisplayMode.ROOM
+    private var quitMode = EventDisplayMode.ROOM
+    private var nickChangeMode = EventDisplayMode.ROOM
+    private var kickMode = EventDisplayMode.ROOM
+    private var banMode = EventDisplayMode.ROOM
+    
     var showEventsInRoom: Boolean = true
-    private var currentNickname: String = config.nickname
+        set(value) {
+            field = value
+            val mode = if (value) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+            updateEventSettings(mode, mode, mode, mode, mode, mode)
+        }
+
+    fun updateEventSettings(
+        join: EventDisplayMode,
+        part: EventDisplayMode,
+        quit: EventDisplayMode,
+        nick: EventDisplayMode,
+        kick: EventDisplayMode,
+        ban: EventDisplayMode
+    ) {
+        joinMode = join
+        partMode = part
+        quitMode = quit
+        nickChangeMode = nick
+        kickMode = kick
+        banMode = ban
+    }
 
     private var socket: Socket? = null
     private var reader: BufferedReader? = null
@@ -37,12 +67,24 @@ class IrcEngine(
     private val _channelUsers = MutableStateFlow<Map<String, List<String>>>(emptyMap())
     val channelUsers: StateFlow<Map<String, List<String>>> = _channelUsers.asStateFlow()
 
+    private val _userPrefixes = MutableStateFlow<Map<String, Map<String, String>>>(emptyMap())
+    val userPrefixes: StateFlow<Map<String, Map<String, String>>> = _userPrefixes.asStateFlow()
+
     private var job: Job? = null
     private var heartbeatJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private var lastMessageTime = System.currentTimeMillis()
     private val motdBuffer = StringBuilder()
+
+    private val _currentNicknameFlow = MutableStateFlow(config.nickname)
+    val currentNicknameFlow: StateFlow<String> = _currentNicknameFlow.asStateFlow()
+
+    private var currentNickname: String = config.nickname
+        set(value) {
+            field = value
+            _currentNicknameFlow.value = value
+        }
 
     enum class ConnectionStatus {
         DISCONNECTED, CONNECTING, CONNECTED, REGISTERING, REGISTERED, ERROR
@@ -106,15 +148,29 @@ class IrcEngine(
         )
     }
 
-    private suspend fun logEvent(channel: String?, text: String) {
-        val target = if (showEventsInRoom && channel != null) channel else "Status"
+    private fun isChannel(target: String): Boolean {
+        return target.startsWith("#") || target.startsWith("&") || target.startsWith("+") || target.startsWith("!")
+    }
+
+    private fun normalizeTarget(target: String): String {
+        return if (isChannel(target)) target.lowercase() else target
+    }
+
+    private suspend fun logEvent(channel: String?, text: String, mode: EventDisplayMode, type: MessageType) {
+        if (mode == EventDisplayMode.IGNORE) return
+        
+        val target = if (mode == EventDisplayMode.ROOM && channel != null) {
+            normalizeTarget(channel)
+        } else "Status"
+
         repository?.insertMessage(
             MessageEntity(
                 serverId = serverId,
                 target = target,
                 sender = "System",
                 text = text,
-                isSystemMessage = true
+                isSystemMessage = true,
+                type = type
             )
         )
     }
@@ -142,8 +198,6 @@ class IrcEngine(
                     lastMessageTime = System.currentTimeMillis()
                     
                     val rawMessage = IrcMessage.parse(line) ?: continue
-                    
-                    // PASS THROUGH SNIFFER
                     val message = sniffer.onIncomingMessage(rawMessage) ?: continue
                     
                     handleProtocol(message)
@@ -179,7 +233,8 @@ class IrcEngine(
                         target = "Status",
                         sender = "Server",
                         text = motdBuffer.toString(),
-                        isSystemMessage = true
+                        isSystemMessage = true,
+                        type = MessageType.TOPIC
                     )
                 )
                 motdBuffer.clear()
@@ -208,38 +263,55 @@ class IrcEngine(
             "323" -> { // RPL_LISTEND
                 logToStatus("Channel list finished.")
             }
+            "332" -> { // RPL_TOPIC
+                val channel = message.parameters.getOrNull(1) ?: return
+                val topic = message.parameters.getOrNull(2) ?: ""
+                updateChannelTopic(channel, topic)
+                logEvent(channel, "Topic for $channel: $topic", EventDisplayMode.ROOM, MessageType.TOPIC)
+            }
+            "333" -> { // RPL_TOPICWHOTIME
+                val channel = message.parameters.getOrNull(1) ?: return
+                val setter = message.parameters.getOrNull(2) ?: ""
+                logEvent(channel, "Topic set by $setter", EventDisplayMode.ROOM, MessageType.TOPIC)
+            }
             "353" -> { // RPL_NAMREPLY
                 val channel = message.parameters.getOrNull(2) ?: return
-                val users = message.parameters.getOrNull(3)?.split(" ")?.filter { it.isNotEmpty() } ?: return
+                val rawUsers = message.parameters.getOrNull(3)?.split(" ")?.filter { it.isNotEmpty() } ?: return
                 
-                val current = _channelUsers.value.toMutableMap()
-                val existing = current[channel] ?: emptyList()
-                current[channel] = (existing + users).distinct()
-                _channelUsers.value = current
-            }
-            "366" -> { // RPL_ENDOFNAMES
-                // Names list complete for a channel
+                val currentUsers = _channelUsers.value.toMutableMap()
+                val currentPrefixes = _userPrefixes.value.toMutableMap()
+                
+                val userList = mutableListOf<String>()
+                val prefixMap = currentPrefixes[channel]?.toMutableMap() ?: mutableMapOf()
+
+                rawUsers.forEach { raw ->
+                    val prefix = if (raw.startsWith("@") || raw.startsWith("+") || raw.startsWith("%") || raw.startsWith("&") || raw.startsWith("~")) {
+                        raw.substring(0, 1)
+                    } else ""
+                    val nick = if (prefix.isNotEmpty()) raw.substring(1) else raw
+                    userList.add(nick)
+                    prefixMap[nick] = prefix
+                }
+
+                currentUsers[channel] = ((currentUsers[channel] ?: emptyList()) + userList).distinct()
+                currentPrefixes[channel] = prefixMap
+                
+                _channelUsers.value = currentUsers
+                _userPrefixes.value = currentPrefixes
             }
             "JOIN" -> {
                 val channelName = message.parameters.firstOrNull() ?: return
                 val sender = message.prefix?.substringBefore("!") ?: ""
                 
-                // Update user list
                 val current = _channelUsers.value.toMutableMap()
                 val existing = current[channelName] ?: emptyList()
                 current[channelName] = (existing + sender).distinct()
                 _channelUsers.value = current
 
-                logEvent(channelName, "$sender joined $channelName")
+                logEvent(channelName, "$sender joined $channelName", joinMode, MessageType.JOIN)
 
-                if (sender == config.nickname) {
-                    repository?.insertChannel(
-                        ChannelEntity(
-                            serverId = serverId,
-                            name = channelName,
-                            isJoined = true
-                        )
-                    )
+                if (sender == currentNickname) {
+                    updateChannelStatus(channelName, joined = true, banned = false)
                 }
             }
             "PART" -> {
@@ -250,16 +322,10 @@ class IrcEngine(
                 current[channelName] = (current[channelName] ?: emptyList()) - sender
                 _channelUsers.value = current
 
-                logEvent(channelName, "$sender left $channelName")
+                logEvent(channelName, "$sender left $channelName", partMode, MessageType.PART)
 
-                if (sender == config.nickname) {
-                    repository?.insertChannel(
-                        ChannelEntity(
-                            serverId = serverId,
-                            name = channelName,
-                            isJoined = false
-                        )
-                    )
+                if (sender == currentNickname) {
+                    updateChannelStatus(channelName, joined = false)
                 }
             }
             "KICK" -> {
@@ -271,16 +337,10 @@ class IrcEngine(
                 current[channelName] = (current[channelName] ?: emptyList()) - kickedUser
                 _channelUsers.value = current
 
-                logEvent(channelName, "$kickedUser was kicked by ${message.prefix?.substringBefore("!")} ($reason)")
+                logEvent(channelName, "$kickedUser was kicked by ${message.prefix?.substringBefore("!")} ($reason)", kickMode, MessageType.KICK)
 
-                if (kickedUser == config.nickname) {
-                    repository?.insertChannel(
-                        ChannelEntity(
-                            serverId = serverId,
-                            name = channelName,
-                            isJoined = false
-                        )
-                    )
+                if (kickedUser == currentNickname) {
+                    updateChannelStatus(channelName, joined = false, banned = true)
                 }
             }
             "QUIT" -> {
@@ -290,7 +350,7 @@ class IrcEngine(
                 for (entry in current) {
                     if (entry.value.contains(sender)) {
                         current[entry.key] = entry.value - sender
-                        logEvent(entry.key, "$sender quit ($reason)")
+                        logEvent(entry.key, "$sender quit ($reason)", quitMode, MessageType.QUIT)
                     }
                 }
                 _channelUsers.value = current
@@ -307,10 +367,24 @@ class IrcEngine(
                 for (entry in current) {
                     if (entry.value.contains(oldNick)) {
                         current[entry.key] = (entry.value - oldNick) + newNick
-                        logEvent(entry.key, "$oldNick is now known as $newNick")
+                        logEvent(entry.key, "$oldNick is now known as $newNick", nickChangeMode, MessageType.NICK)
                     }
                 }
                 _channelUsers.value = current
+            }
+            "MODE" -> {
+                val channel = message.parameters.getOrNull(0) ?: return
+                val mode = message.parameters.getOrNull(1) ?: ""
+                val target = message.parameters.getOrNull(2) ?: ""
+                
+                if (mode == "+b" && target.contains(currentNickname)) {
+                    logEvent(channel, "You have been BANNED from $channel", EventDisplayMode.ROOM, MessageType.BAN)
+                    updateChannelStatus(channel, joined = false, banned = true)
+                } else if (mode.contains("b")) {
+                    logEvent(channel, "Mode change: $mode $target", banMode, MessageType.BAN)
+                } else {
+                    logEvent(channel, "Mode change: $mode $target", kickMode, MessageType.KICK)
+                }
             }
         }
     }
@@ -320,7 +394,6 @@ class IrcEngine(
         
         when {
             ctcp == "IRC_SEC_REQ" -> {
-                // Someone wants to start a secure chat with us
                 repository.insertUser(
                     UserEntity(
                         nickname = sender,
@@ -331,7 +404,6 @@ class IrcEngine(
                 logToStatus("Secure chat request received from $sender.")
             }
             ctcp.startsWith("IRC_SEC_KEY ") -> {
-                // Someone accepted our request and sent a key
                 val key = ctcp.removePrefix("IRC_SEC_KEY ").trim()
                 repository.insertUser(
                     UserEntity(
@@ -355,9 +427,31 @@ class IrcEngine(
                 var text = message.parameters.getOrNull(1) ?: ""
                 val sender = message.prefix?.substringBefore("!") ?: "system"
                 
-                // Handle CTCP (handshake for secure chat)
+                // Check ignore
+                val user = repository.getUser(sender, serverId)
+                if (user?.isIgnored == true) return
+
                 if (text.startsWith("\u0001") && text.endsWith("\u0001")) {
                     val ctcp = text.substring(1, text.length - 1)
+                    if (ctcp.startsWith("ACTION ")) {
+                        val actionText = ctcp.substring(7)
+                        val finalTarget = if (rawTarget.equals(currentNickname, ignoreCase = true)) {
+                            sender
+                        } else {
+                            normalizeTarget(rawTarget)
+                        }
+                        repository.insertMessage(
+                            MessageEntity(
+                                serverId = serverId,
+                                target = finalTarget,
+                                sender = sender,
+                                text = "* $sender $actionText",
+                                isSystemMessage = false,
+                                type = MessageType.TEXT
+                            )
+                        )
+                        return
+                    }
                     handleCtcp(sender, ctcp)
                     return
                 }
@@ -367,14 +461,13 @@ class IrcEngine(
                     text = text.removePrefix("[ENC] ").trim()
                 }
 
-                // Normalize target: if it's a channel, lowercase it
-                val finalTarget = if (rawTarget.startsWith("#")) {
-                    rawTarget.lowercase()
-                } else if (rawTarget.equals(currentNickname, ignoreCase = true)) {
+                val finalTarget = if (rawTarget.equals(currentNickname, ignoreCase = true)) {
                     sender
                 } else {
-                    rawTarget
+                    normalizeTarget(rawTarget)
                 }
+
+                incrementUnreadCount(finalTarget)
 
                 repository.insertMessage(
                     MessageEntity(
@@ -393,7 +486,7 @@ class IrcEngine(
                 val text = message.parameters.getOrNull(1) ?: ""
                 val sender = message.prefix?.substringBefore("!") ?: "System"
                 
-                val finalTarget = if (target == config.nickname || target == "*") "Status" else target
+                val finalTarget = if (target == currentNickname || target == "*") "Status" else normalizeTarget(target)
 
                 repository.insertMessage(
                     MessageEntity(
@@ -407,12 +500,8 @@ class IrcEngine(
                 )
             }
             else -> {
-                // Save numeric replies to Status or specific window
                 if (message.command.all { it.isDigit() }) {
                     val text = message.parameters.drop(1).joinToString(" ")
-                    
-                    // Special case: WHOIS info usually has nick as first parameter after our own nick
-                    // Format: <our_nick> <target_nick> <info...>
                     val targetNick = message.parameters.getOrNull(1)
                     
                     val finalTarget = when (message.command) {
@@ -447,8 +536,68 @@ class IrcEngine(
         }
     }
 
+    suspend fun executeCommand(target: String, input: String): Boolean {
+        return commandHandler.handleCommand(target, input)
+    }
+
+    fun getAvailableCommands(target: String, isOp: Boolean): List<String> {
+        return commandHandler.getAvailableCommands(target, isOp)
+    }
+
     suspend fun sendMessage(message: IrcMessage) {
         send(message.build())
+    }
+
+    private suspend fun updateChannelStatus(name: String, joined: Boolean, banned: Boolean? = null) {
+        val channel = repository?.getChannel(serverId, name)
+        if (channel != null) {
+            repository.updateChannel(channel.copy(
+                isJoined = joined,
+                isBanned = banned ?: channel.isBanned
+            ))
+        } else {
+            repository?.insertChannel(
+                ChannelEntity(
+                    serverId = serverId,
+                    name = name,
+                    isJoined = joined,
+                    isBanned = banned ?: false
+                )
+            )
+        }
+    }
+
+    private suspend fun updateChannelTopic(name: String, topic: String) {
+        val channel = repository?.getChannel(serverId, name)
+        if (channel != null) {
+            repository.updateChannel(channel.copy(topic = topic))
+        } else {
+            repository?.insertChannel(
+                ChannelEntity(
+                    serverId = serverId,
+                    name = name,
+                    topic = topic,
+                    isJoined = true
+                )
+            )
+        }
+    }
+
+    private suspend fun incrementUnreadCount(name: String) {
+        if (name == "Status") return
+        val channel = repository?.getChannel(serverId, name)
+        if (channel != null) {
+            repository.updateChannel(channel.copy(unreadCount = channel.unreadCount + 1))
+        } else {
+            repository?.insertChannel(
+                ChannelEntity(
+                    serverId = serverId,
+                    name = name,
+                    unreadCount = 1,
+                    isJoined = false
+                )
+            )
+        }
     }
 
     fun disconnect() {

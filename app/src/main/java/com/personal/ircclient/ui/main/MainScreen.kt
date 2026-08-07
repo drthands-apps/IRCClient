@@ -62,12 +62,24 @@ fun MainScreen() {
         Screen.Settings
     )
 
+    val totalUnread by chatsViewModel.totalUnreadCount.collectAsState()
+
     Scaffold(
         bottomBar = {
             NavigationBar {
                 items.forEach { screen ->
                     NavigationBarItem(
-                        icon = { Icon(screen.icon, contentDescription = screen.title) },
+                        icon = { 
+                            BadgedBox(
+                                badge = {
+                                    if (screen == Screen.Chats && totalUnread > 0) {
+                                        Badge { Text(totalUnread.toString()) }
+                                    }
+                                }
+                            ) {
+                                Icon(screen.icon, contentDescription = screen.title)
+                            }
+                        },
                         label = { Text(screen.title) },
                         selected = currentRoute == screen.route,
                         onClick = {
