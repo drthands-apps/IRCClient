@@ -1,0 +1,25 @@
+package com.personal.ircclient.data.local.entities
+
+import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.PrimaryKey
+
+@Entity(
+    tableName = "channels",
+    foreignKeys = [
+        ForeignKey(
+            entity = ServerEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["serverId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class ChannelEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val serverId: Long,
+    val name: String,
+    val password: String? = null,
+    val isJoined: Boolean = false,
+    val autoJoin: Boolean = true
+)
