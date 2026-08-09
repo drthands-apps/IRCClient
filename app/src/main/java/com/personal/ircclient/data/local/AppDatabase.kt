@@ -6,12 +6,20 @@ import com.personal.ircclient.data.local.dao.ChannelDao
 import com.personal.ircclient.data.local.dao.ChannelDiscoveryDao
 import com.personal.ircclient.data.local.dao.MessageDao
 import com.personal.ircclient.data.local.dao.ServerDao
+import com.personal.ircclient.data.local.dao.SettingsDao
 import com.personal.ircclient.data.local.dao.UserDao
 import com.personal.ircclient.data.local.entities.*
 
 @Database(
-    entities = [ServerEntity::class, ChannelEntity::class, MessageEntity::class, UserEntity::class, ChannelDiscoveryEntity::class],
-    version = 4,
+    entities = [
+        ServerEntity::class, 
+        ChannelEntity::class, 
+        MessageEntity::class, 
+        UserEntity::class, 
+        ChannelDiscoveryEntity::class,
+        SettingsEntity::class
+    ],
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -20,4 +28,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
     abstract fun userDao(): UserDao
     abstract fun channelDiscoveryDao(): ChannelDiscoveryDao
+    abstract fun settingsDao(): SettingsDao
 }

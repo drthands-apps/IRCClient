@@ -9,8 +9,13 @@ class IrcRepository(
     private val channelDao: ChannelDao,
     private val messageDao: MessageDao,
     private val userDao: UserDao,
-    private val channelDiscoveryDao: ChannelDiscoveryDao
+    private val channelDiscoveryDao: ChannelDiscoveryDao,
+    private val settingsDao: SettingsDao
 ) {
+    // Settings
+    val settings: Flow<SettingsEntity?> = settingsDao.getSettings()
+    suspend fun updateSettings(settings: SettingsEntity) = settingsDao.updateSettings(settings)
+
     // Servers
     val allServers: Flow<List<ServerEntity>> = serverDao.getAllServers()
     
@@ -56,6 +61,15 @@ class IrcRepository(
     suspend fun getUser(nickname: String, serverId: Long) = userDao.getUser(nickname, serverId)
     suspend fun insertUser(user: UserEntity) = userDao.insertUser(user)
     suspend fun deleteUser(user: UserEntity) = userDao.deleteUser(user)
+    
+    suspend fun resetTemporalUserStates(serverId: Long) {
+        userDao.resetTemporalIgnore(serverId)
+        userDao.resetTemporalSilence(serverId)
+    }
+
+    suspend fun isHostmaskIgnored(serverId: Long, hostmask: String): Boolean {
+        return userDao.isHostmaskIgnored(serverId, hostmask)
+    }
 
     // Channel Discovery
     fun getDiscoveredChannels(serverId: Long) = channelDiscoveryDao.getDiscoveredChannels(serverId)

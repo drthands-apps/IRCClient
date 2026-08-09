@@ -26,9 +26,10 @@ data class MessageEntity(
     val isSystemMessage: Boolean = false,
     val isModifiedByScript: Boolean = false,
     val type: MessageType = MessageType.TEXT,
-    val mediaUri: String? = null // For local reference if needed
+    val mediaUri: String? = null,
+    val expiryTimestamp: Long? = null
 )
 
 enum class MessageType {
-    TEXT, IMAGE, VOICE, JOIN, PART, QUIT, KICK, BAN, NICK, TOPIC
+    TEXT, IMAGE, VOICE, JOIN, PART, QUIT, KICK, BAN, NICK, TOPIC, NOTICE
 }

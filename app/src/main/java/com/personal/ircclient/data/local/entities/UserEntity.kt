@@ -3,13 +3,23 @@ package com.personal.ircclient.data.local.entities
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "users")
+enum class UserStatus {
+    NONE, TEMPORAL, DEFINITIVE
+}
+
+@Entity(
+    tableName = "users",
+    primaryKeys = ["nickname", "serverId"]
+)
 data class UserEntity(
-    @PrimaryKey val nickname: String,
+    val nickname: String,
     val serverId: Long,
+    val hostmask: String? = null,
     val realName: String? = null,
     val isBlocked: Boolean = false,
-    val isIgnored: Boolean = false,
+    val ignoreStatus: UserStatus = UserStatus.NONE,
+    val silenceStatus: UserStatus = UserStatus.NONE,
+    val isFriend: Boolean = false,
     val encryptionKey: String? = null,
     val secureHandshakeStatus: HandshakeStatus = HandshakeStatus.NONE,
     val notes: String? = null

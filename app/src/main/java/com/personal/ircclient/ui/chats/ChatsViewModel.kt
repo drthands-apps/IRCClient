@@ -8,15 +8,10 @@ import androidx.lifecycle.viewModelScope
 import com.personal.ircclient.core.IrcManager
 import com.personal.ircclient.core.security.EncryptionManager
 import com.personal.ircclient.data.local.dao.TargetInfo
-import com.personal.ircclient.data.local.entities.ChannelDiscoveryEntity
-import com.personal.ircclient.data.local.entities.ChannelEntity
-import com.personal.ircclient.data.local.entities.EventDisplayMode
-import com.personal.ircclient.data.local.entities.HandshakeStatus
-import com.personal.ircclient.data.local.entities.MessageEntity
-import com.personal.ircclient.data.local.entities.MessageType
-import com.personal.ircclient.data.local.entities.UserEntity
+import com.personal.ircclient.data.local.entities.*
 import com.personal.ircclient.data.repository.IrcRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -25,6 +20,10 @@ class ChatsViewModel(
     private val ircManager: IrcManager,
     private val ttsManager: com.personal.ircclient.core.audio.TextToSpeechManager? = null
 ) : ViewModel() {
+
+    private val _settings = repository.settings.stateIn(viewModelScope, SharingStarted.Eagerly, SettingsEntity())
+    val settingsState: StateFlow<SettingsEntity> = _settings.map { it ?: SettingsEntity() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, SettingsEntity())
 
     var isTtsActive by mutableStateOf(false)
         private set
@@ -50,68 +49,41 @@ class ChatsViewModel(
     var banDisplayMode by mutableStateOf(EventDisplayMode.ROOM)
         private set
 
-    fun setTtsEnabled(enabled: Boolean) {
-        isTtsActive = enabled
-    }
+    init {
+        viewModelScope.launch {
+            repository.settings.collectLatest { s ->
+                s?.let {
+                    isTtsActive = it.isTtsActive
+                    showEventsInRoom = it.showEventsInRoom
+                    joinDisplayMode = EventDisplayMode.valueOf(it.joinDisplayMode)
+                    partDisplayMode = EventDisplayMode.valueOf(it.partDisplayMode)
+                    quitDisplayMode = EventDisplayMode.valueOf(it.quitDisplayMode)
+                    nickChangeDisplayMode = EventDisplayMode.valueOf(it.nickChangeDisplayMode)
+                    kickDisplayMode = EventDisplayMode.valueOf(it.kickDisplayMode)
+                    banDisplayMode = EventDisplayMode.valueOf(it.banDisplayMode)
+                    updateEngineSettings()
+                }
+            }
+        }
 
-    fun setShowEventsInRoomEnabled(enabled: Boolean) {
-        showEventsInRoom = enabled
-        val mode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
-        joinDisplayMode = mode
-        partDisplayMode = mode
-        quitDisplayMode = mode
-        nickChangeDisplayMode = mode
-        kickDisplayMode = mode
-        banDisplayMode = mode
-        updateEngineSettings()
-    }
-
-    fun setJoinDisplayEnabled(enabled: Boolean) {
-        joinDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
-        updateEngineSettings()
-    }
-
-    fun setPartDisplayEnabled(enabled: Boolean) {
-        partDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
-        updateEngineSettings()
-    }
-
-    fun setQuitDisplayEnabled(enabled: Boolean) {
-        quitDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
-        updateEngineSettings()
-    }
-
-    fun setNickChangeDisplayEnabled(enabled: Boolean) {
-        nickChangeDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
-        updateEngineSettings()
-    }
-
-    fun setKickDisplayEnabled(enabled: Boolean) {
-        kickDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
-        updateEngineSettings()
-    }
-
-    fun setBanDisplayEnabled(enabled: Boolean) {
-        banDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
-        updateEngineSettings()
-    }
-    
-    fun updateJoinPartDisplayMode(mode: EventDisplayMode) {
-        joinDisplayMode = mode
-        partDisplayMode = mode
-        quitDisplayMode = mode
-        updateEngineSettings()
-    }
-
-    fun updateNickChangeDisplayMode(mode: EventDisplayMode) {
-        nickChangeDisplayMode = mode
-        updateEngineSettings()
-    }
-
-    fun updateKickBanDisplayMode(mode: EventDisplayMode) {
-        kickDisplayMode = mode
-        banDisplayMode = mode
-        updateEngineSettings()
+        viewModelScope.launch {
+            ircManager.activeServers.collect { serverIds ->
+                serverIds.forEach { serverId ->
+                    val engine = ircManager.getEngine(serverId) ?: return@forEach
+                    launch {
+                        engine.messages.collect { msg ->
+                            if (isTtsActive && msg.command == "PRIVMSG") {
+                                val sender = msg.prefix?.substringBefore("!") ?: "Unknown"
+                                val text = msg.parameters.getOrNull(1) ?: ""
+                                if (!text.startsWith("[ENC]")) {
+                                    ttsManager?.speak("$sender says: $text")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private fun updateEngineSettings() {
@@ -128,42 +100,145 @@ class ChatsViewModel(
         }
     }
 
-    init {
-        // Observe all incoming messages for TTS
+    private fun saveSettings() {
         viewModelScope.launch {
-            ircManager.activeServers.collect { serverIds ->
-                serverIds.forEach { serverId ->
-                    val engine = ircManager.getEngine(serverId) ?: return@forEach
-                    launch {
-                        engine.messages.collect { msg ->
-                            if (isTtsActive && msg.command == "PRIVMSG") {
-                                val sender = msg.prefix?.substringBefore("!") ?: "Unknown"
-                                val text = msg.parameters.getOrNull(1) ?: ""
-                                if (!text.startsWith("[ENC]")) { // Don't read encrypted raw text
-                                    ttsManager?.speak("$sender says: $text")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            val current = settingsState.value
+            repository.updateSettings(
+                current.copy(
+                    isTtsActive = isTtsActive,
+                    showEventsInRoom = showEventsInRoom,
+                    joinDisplayMode = joinDisplayMode.name,
+                    partDisplayMode = partDisplayMode.name,
+                    quitDisplayMode = quitDisplayMode.name,
+                    nickChangeDisplayMode = nickChangeDisplayMode.name,
+                    kickDisplayMode = kickDisplayMode.name,
+                    banDisplayMode = banDisplayMode.name,
+                    ownMessageColor = current.ownMessageColor,
+                    otherBubbleColor = current.otherBubbleColor,
+                    ownBubbleColor = current.ownBubbleColor,
+                    themeName = current.themeName,
+                    useHighContrast = current.useHighContrast
+                )
+            )
         }
     }
 
+    fun updateSettings(newSettings: SettingsEntity) {
+        viewModelScope.launch {
+            repository.updateSettings(newSettings)
+        }
+    }
+
+    fun setTtsEnabled(enabled: Boolean) {
+        isTtsActive = enabled
+        saveSettings()
+    }
+
+    fun setShowEventsInRoomEnabled(enabled: Boolean) {
+        showEventsInRoom = enabled
+        val mode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        joinDisplayMode = mode
+        partDisplayMode = mode
+        quitDisplayMode = mode
+        nickChangeDisplayMode = mode
+        kickDisplayMode = mode
+        banDisplayMode = mode
+        updateEngineSettings()
+        saveSettings()
+    }
+
+    fun setJoinDisplayEnabled(enabled: Boolean) {
+        joinDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        updateEngineSettings()
+        saveSettings()
+    }
+
+    fun setPartDisplayEnabled(enabled: Boolean) {
+        partDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        updateEngineSettings()
+        saveSettings()
+    }
+
+    fun setQuitDisplayEnabled(enabled: Boolean) {
+        quitDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        updateEngineSettings()
+        saveSettings()
+    }
+
+    fun setNickChangeDisplayEnabled(enabled: Boolean) {
+        nickChangeDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        updateEngineSettings()
+        saveSettings()
+    }
+
+    fun setKickDisplayEnabled(enabled: Boolean) {
+        kickDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        updateEngineSettings()
+        saveSettings()
+    }
+
+    fun setBanDisplayEnabled(enabled: Boolean) {
+        banDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        updateEngineSettings()
+        saveSettings()
+    }
+
+    fun disconnectAll() {
+        ircManager.disconnectAll()
+    }
+
+    fun setSoundOnFriendJoin(enabled: Boolean) {
+        updateSettings(settingsState.value.copy(soundOnFriendJoin = enabled))
+    }
+
+    fun setSoundOnPrivateMessage(enabled: Boolean) {
+        updateSettings(settingsState.value.copy(soundOnPrivateMessage = enabled))
+    }
+
+    fun setSoundOnBan(enabled: Boolean) {
+        updateSettings(settingsState.value.copy(soundOnBan = enabled))
+    }
+
+    // --- Original UI Flow & Repo bridge ---
+    
     val activeTargets: StateFlow<List<TargetInfo>> = repository.getAllActiveTargets()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val activeChannels: StateFlow<List<TargetInfo>> = activeTargets.map { targets ->
+        targets.filter { isChannel(it.target) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val activePrivateChats: StateFlow<List<TargetInfo>> = activeTargets.map { targets ->
+        targets.filter { !isChannel(it.target) && it.target != "Status" }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allServers: StateFlow<List<ServerEntity>> = repository.allServers
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val totalUnreadCount: StateFlow<Int> = activeTargets.map { targets ->
         targets.sumOf { it.unreadCount ?: 0 }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    val channelsUnreadCount: StateFlow<Int> = activeChannels.map { targets ->
+        targets.sumOf { it.unreadCount ?: 0 }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val privatesUnreadCount: StateFlow<Int> = activePrivateChats.map { targets ->
+        targets.sumOf { it.unreadCount ?: 0 }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     fun clearUnreadCount(serverId: Long, target: String) {
+        ircManager.setCurrentlyViewing(serverId, target)
         viewModelScope.launch {
             val channel = repository.getChannel(serverId, target)
             if (channel != null) {
                 repository.updateChannel(channel.copy(unreadCount = 0))
             }
         }
+    }
+
+    fun onLeaveChat(serverId: Long) {
+        ircManager.setCurrentlyViewing(serverId, null)
     }
 
     fun closeChat(serverId: Long, target: String) {
@@ -173,11 +248,9 @@ class ChatsViewModel(
                 val engine = ircManager.getEngine(serverId)
                 engine?.send("PART $target")
             }
-            
             if (channel == null || !channel.saveLog) {
                 repository.clearHistory(serverId, target)
             }
-
             if (channel != null) {
                  repository.updateChannel(channel.copy(unreadCount = 0, isJoined = false))
             }
@@ -190,14 +263,16 @@ class ChatsViewModel(
             if (channel != null) {
                 repository.updateChannel(channel.copy(saveLog = enabled))
             } else {
-                repository.insertChannel(
-                    ChannelEntity(
-                        serverId = serverId,
-                        name = target,
-                        saveLog = enabled,
-                        isJoined = false
-                    )
-                )
+                repository.insertChannel(ChannelEntity(serverId = serverId, name = target, saveLog = enabled, isJoined = false))
+            }
+        }
+    }
+
+    fun setServerReconnectChannels(serverId: Long, enabled: Boolean) {
+        viewModelScope.launch {
+            val server = repository.allServers.first().find { it.id == serverId }
+            if (server != null) {
+                repository.updateServer(server.copy(reconnectOpenChannels = enabled))
             }
         }
     }
@@ -211,9 +286,30 @@ class ChatsViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    fun getChannelUsersWithInfo(serverId: Long, channelName: String): StateFlow<List<ChannelUserInfo>> {
+        val engine = ircManager.getEngine(serverId) ?: return MutableStateFlow(emptyList())
+        val normalizedName = normalizeTarget(channelName)
+        
+        return combine(engine.channelUsers, engine.userPrefixes) { users, prefixes ->
+            val nicks = users[normalizedName] ?: emptyList()
+            val prefixMap = prefixes[normalizedName] ?: emptyMap()
+            
+            nicks.map { nick ->
+                val userEntity = repository.getUser(nick, serverId)
+                ChannelUserInfo(
+                    nickname = nick,
+                    prefix = prefixMap[nick] ?: "",
+                    isFriend = userEntity?.isFriend ?: false,
+                    ignoreStatus = userEntity?.ignoreStatus ?: UserStatus.NONE
+                )
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }
+
     fun getChannelUsers(serverId: Long, channelName: String): StateFlow<List<String>> {
         val engine = ircManager.getEngine(serverId)
-        return engine?.channelUsers?.map { it[channelName] ?: emptyList() }
+        val normalizedName = normalizeTarget(channelName)
+        return engine?.channelUsers?.map { it[normalizedName] ?: emptyList() }
             ?.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
             ?: MutableStateFlow(emptyList())
     }
@@ -227,14 +323,27 @@ class ChatsViewModel(
         }
     }
 
-    fun ignoreUser(serverId: Long, nickname: String, ignore: Boolean) {
+    fun ignoreUser(serverId: Long, nickname: String, status: UserStatus) {
         viewModelScope.launch {
             val user = repository.getUser(nickname, serverId)
-            if (user != null) {
-                repository.insertUser(user.copy(isIgnored = ignore))
-            } else {
-                repository.insertUser(UserEntity(nickname = nickname, serverId = serverId, isIgnored = ignore))
-            }
+            if (user != null) repository.insertUser(user.copy(ignoreStatus = status))
+            else repository.insertUser(UserEntity(nickname = nickname, serverId = serverId, ignoreStatus = status))
+        }
+    }
+
+    fun silenceUser(serverId: Long, nickname: String, status: UserStatus) {
+        viewModelScope.launch {
+            val user = repository.getUser(nickname, serverId)
+            if (user != null) repository.insertUser(user.copy(silenceStatus = status))
+            else repository.insertUser(UserEntity(nickname = nickname, serverId = serverId, silenceStatus = status))
+        }
+    }
+
+    fun setFriend(serverId: Long, nickname: String, isFriend: Boolean) {
+        viewModelScope.launch {
+            val user = repository.getUser(nickname, serverId)
+            if (user != null) repository.insertUser(user.copy(isFriend = isFriend))
+            else repository.insertUser(UserEntity(nickname = nickname, serverId = serverId, isFriend = isFriend))
         }
     }
 
@@ -246,30 +355,57 @@ class ChatsViewModel(
         return if (isChannel(target)) target.lowercase() else target
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun getMessages(serverId: Long, target: String): Flow<List<MessageEntity>> {
         val finalTarget = normalizeTarget(target)
-        return repository.getMessagesForTarget(serverId, finalTarget).map { messages ->
-            val user = repository.getUser(target, serverId)
+        val ticker = flow {
+            while (true) {
+                emit(System.currentTimeMillis())
+                delay(1000)
+            }
+        }
+        
+        val userFlow = flow { emit(repository.getUser(target, serverId)) }
+        
+        return combine(repository.getMessagesForTarget(serverId, finalTarget), ticker, userFlow) { messages, currentTime, user ->
             val key = user?.encryptionKey
             
-            messages.map { msg ->
+            messages.filter { it.expiryTimestamp == null || it.expiryTimestamp > currentTime }
+                .map { msg ->
                 val decryptedText = if (msg.isEncrypted && key != null) {
                     EncryptionManager.decrypt(msg.text, key)
                 } else {
                     msg.text
                 }
                 
-                // Parse media tag if exists
+                // Parse media tag: [MEDIA:TYPE:TTL=seconds:DATA] or [MEDIA:TYPE:DATA]
                 if (decryptedText.startsWith("[MEDIA:") && decryptedText.endsWith("]")) {
-                    val parts = decryptedText.removePrefix("[MEDIA:").removeSuffix("]").split(":", limit = 2)
-                    if (parts.size == 2) {
-                        val typeStr = parts[0]
-                        val data = parts[1]
-                        val type = try { MessageType.valueOf(typeStr) } catch(e: Exception) { MessageType.TEXT }
-                        msg.copy(text = data, type = type)
-                    } else {
-                        msg.copy(text = decryptedText)
+                    val content = decryptedText.removePrefix("[MEDIA:").removeSuffix("]")
+                    val parts = content.split(":", limit = 3)
+                    
+                    var type = MessageType.TEXT
+                    var data = ""
+                    var ttl: Long? = null
+                    
+                    if (parts.size >= 2) {
+                        type = try { MessageType.valueOf(parts[0]) } catch(e: Exception) { MessageType.TEXT }
+                        
+                        if (parts.size == 3 && parts[1].startsWith("TTL=")) {
+                            ttl = parts[1].removePrefix("TTL=").toLongOrNull()
+                            data = parts[2]
+                        } else {
+                            data = parts.subList(1, parts.size).joinToString(":")
+                        }
                     }
+
+                    if (ttl != null && msg.expiryTimestamp == null) {
+                        // This is the first time we see this TTL, update in DB
+                        viewModelScope.launch {
+                            repository.insertMessage(msg.copy(expiryTimestamp = msg.timestamp + (ttl * 1000)))
+                        }
+                    }
+
+                    msg.copy(text = data, type = type)
                 } else {
                     msg.copy(text = decryptedText)
                 }
@@ -277,13 +413,9 @@ class ChatsViewModel(
         }
     }
 
-    fun getUser(serverId: Long, nickname: String): Flow<UserEntity?> = flow {
-        emit(repository.getUser(nickname, serverId))
-    }
+    fun getUser(serverId: Long, nickname: String): Flow<UserEntity?> = flow { emit(repository.getUser(nickname, serverId)) }
 
-    fun getServerName(serverId: Long): Flow<String> = repository.allServers.map { servers ->
-        servers.find { it.id == serverId }?.name ?: "Server $serverId"
-    }
+    fun getServerName(serverId: Long): Flow<String> = repository.allServers.map { servers -> servers.find { it.id == serverId }?.name ?: "Server $serverId" }
 
     fun getAvailableCommands(serverId: Long, target: String, isOp: Boolean): List<String> {
         val engine = ircManager.getEngine(serverId)
@@ -295,27 +427,12 @@ class ChatsViewModel(
         return engine?.currentNicknameFlow ?: MutableStateFlow("Unknown")
     }
 
-    fun setNickname(serverId: Long, newNick: String) {
-        viewModelScope.launch {
-            val engine = ircManager.getEngine(serverId)
-            engine?.send("NICK $newNick")
-        }
-    }
-
     fun initiateSecureChat(serverId: Long, nickname: String) {
         viewModelScope.launch {
             val engine = ircManager.getEngine(serverId)
             if (engine != null) {
-                // Send CTCP request
                 engine.send("PRIVMSG $nickname :\u0001IRC_SEC_REQ\u0001")
-                // Mark locally as requested
-                repository.insertUser(
-                    UserEntity(
-                        nickname = nickname,
-                        serverId = serverId,
-                        secureHandshakeStatus = HandshakeStatus.REQUESTED
-                    )
-                )
+                repository.insertUser(UserEntity(nickname = nickname, serverId = serverId, secureHandshakeStatus = HandshakeStatus.REQUESTED))
             }
         }
     }
@@ -325,17 +442,8 @@ class ChatsViewModel(
             val engine = ircManager.getEngine(serverId)
             if (engine != null) {
                 val uniqueKey = EncryptionManager.generateRandomKey()
-                // Send key to the requester via CTCP
                 engine.send("PRIVMSG $nickname :\u0001IRC_SEC_KEY $uniqueKey\u0001")
-                // Save key locally
-                repository.insertUser(
-                    UserEntity(
-                        nickname = nickname,
-                        serverId = serverId,
-                        encryptionKey = uniqueKey,
-                        secureHandshakeStatus = HandshakeStatus.COMPLETED
-                    )
-                )
+                repository.insertUser(UserEntity(nickname = nickname, serverId = serverId, encryptionKey = uniqueKey, secureHandshakeStatus = HandshakeStatus.COMPLETED))
             }
         }
     }
@@ -346,95 +454,47 @@ class ChatsViewModel(
             if (engine != null) {
                 if (text.startsWith("/")) {
                     val handled = engine.executeCommand(target, text)
-                    if (!handled) {
-                        engine.send(text.substring(1))
-                    }
+                    if (!handled) engine.send(text.substring(1))
                     
-                    // Special case for local UI actions
                     if (text.startsWith("/ME ", ignoreCase = true)) {
                         val action = text.substring(4)
-                        repository.insertMessage(
-                            MessageEntity(
-                                serverId = serverId,
-                                target = target,
-                                sender = "me",
-                                text = "* me $action",
-                                type = MessageType.TEXT
-                            )
-                        )
+                        val myNick = getCurrentNickname(serverId).value
+                        repository.insertMessage(MessageEntity(serverId = serverId, target = target, sender = myNick, text = "* $myNick $action", type = MessageType.TEXT))
                     }
-
                     if (text.startsWith("/QUERY ", ignoreCase = true)) {
-                         // The command already sent a message or validated, 
-                         // but we might want to ensure the target exists in our local list
                          val newTarget = text.substring(7).trim().substringBefore(" ")
-                         if (newTarget.isNotEmpty()) {
-                             repository.insertMessage(
-                                 MessageEntity(
-                                     serverId = serverId,
-                                     target = newTarget,
-                                     sender = "System",
-                                     text = "Started query with $newTarget",
-                                     isSystemMessage = true
-                                 )
-                             )
-                         }
+                         if (newTarget.isNotEmpty()) repository.insertMessage(MessageEntity(serverId = serverId, target = newTarget, sender = "System", text = "Started query with $newTarget", isSystemMessage = true))
                     }
                     return@launch
                 }
                 
-                if (target == "Status") {
-                    engine.send(text)
-                    return@launch
-                }
-
+                if (target == "Status") { engine.send(text); return@launch }
                 val user = repository.getUser(target, serverId)
                 val key = user?.encryptionKey
-                
-                val finalMessage = if (key != null) {
-                    "[ENC] " + EncryptionManager.encrypt(text, key)
-                } else {
-                    text
-                }
-                
+                val finalMessage = if (key != null) "[ENC] " + EncryptionManager.encrypt(text, key) else text
                 engine.send("PRIVMSG $target :$finalMessage")
-                
-                // Normalize target
                 val finalTarget = normalizeTarget(target)
-
-                repository.insertMessage(
-                    MessageEntity(
-                        serverId = serverId,
-                        target = finalTarget,
-                        sender = "me", 
-                        text = if (key != null) EncryptionManager.encrypt(text, key) else text,
-                        isEncrypted = key != null,
-                        type = MessageType.TEXT
-                    )
-                )
+                repository.insertMessage(MessageEntity(serverId = serverId, target = finalTarget, sender = "me", text = if (key != null) EncryptionManager.encrypt(text, key) else text, isEncrypted = key != null, type = MessageType.TEXT))
             }
         }
     }
 
-    fun sendMedia(serverId: Long, target: String, type: MessageType, data: String) {
+    fun sendMedia(serverId: Long, target: String, type: MessageType, data: String, ttlSeconds: Long? = null) {
         viewModelScope.launch {
             val engine = ircManager.getEngine(serverId)
             if (engine != null) {
                 val user = repository.getUser(target, serverId)
                 val key = user?.encryptionKey
                 
-                val mediaTag = "[MEDIA:${type.name}:$data]"
-                val finalMessage = if (key != null) {
-                    "[ENC] " + EncryptionManager.encrypt(mediaTag, key)
-                } else {
-                    mediaTag
-                }
+                val ttlPrefix = if (ttlSeconds != null) "TTL=$ttlSeconds:" else ""
+                val mediaTag = "[MEDIA:${type.name}:$ttlPrefix$data]"
+                val finalMessage = if (key != null) "[ENC] " + EncryptionManager.encrypt(mediaTag, key) else mediaTag
                 
                 engine.send("PRIVMSG $target :$finalMessage")
-                
-                // Normalize target
                 val finalTarget = normalizeTarget(target)
-
+                
+                val expiryTimestamp = if (ttlSeconds != null) System.currentTimeMillis() + (ttlSeconds * 1000) else null
+                
                 repository.insertMessage(
                     MessageEntity(
                         serverId = serverId,
@@ -442,10 +502,18 @@ class ChatsViewModel(
                         sender = "me",
                         text = if (key != null) EncryptionManager.encrypt(mediaTag, key) else mediaTag,
                         isEncrypted = key != null,
-                        type = type
+                        type = type,
+                        expiryTimestamp = expiryTimestamp
                     )
                 )
             }
         }
     }
 }
+
+data class ChannelUserInfo(
+    val nickname: String,
+    val prefix: String,
+    val isFriend: Boolean,
+    val ignoreStatus: UserStatus
+)

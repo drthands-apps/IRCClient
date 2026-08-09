@@ -18,21 +18,20 @@ import com.personal.ircclient.data.local.dao.TargetInfo
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatsScreen(
+    targets: List<TargetInfo>,
     viewModel: ChatsViewModel,
     onTargetClick: (Long, String) -> Unit
 ) {
-    val targets by viewModel.activeTargets.collectAsState()
-    
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
-            text = "Active Chats",
+            text = "Active Conversations",
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(16.dp)
         )
         
         if (targets.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No active conversations yet.")
+                Text("No active conversations here.")
             }
         } else {
             LazyColumn {
@@ -64,7 +63,12 @@ fun ChatsScreen(
                         TargetItem(
                             targetInfo = targetInfo,
                             viewModel = viewModel,
-                            onClick = { onTargetClick(targetInfo.serverId, targetInfo.target) }
+                            onClick = { 
+                                if (targetInfo.target.startsWith("#") && targetInfo.isJoined == false) {
+                                    viewModel.sendMessage(targetInfo.serverId, targetInfo.target, "/JOIN ${targetInfo.target}")
+                                }
+                                onTargetClick(targetInfo.serverId, targetInfo.target)
+                            }
                         )
                     }
                 }

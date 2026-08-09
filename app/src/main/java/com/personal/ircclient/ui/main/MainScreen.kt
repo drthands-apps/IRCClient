@@ -1,12 +1,17 @@
 package com.personal.ircclient.ui.main
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -22,10 +27,12 @@ import com.personal.ircclient.ui.chats.ChatsScreen
 import com.personal.ircclient.ui.chats.ChatsViewModel
 import com.personal.ircclient.ui.discovery.ChannelListScreen
 import com.personal.ircclient.ui.navigation.Screen
-import com.personal.ircclient.ui.servers.AddServerScreen
+import com.personal.ircclient.ui.servers.ServerEditScreen
 import com.personal.ircclient.ui.servers.ServersScreen
 import com.personal.ircclient.ui.servers.ServersViewModel
 import com.personal.ircclient.ui.settings.SettingsScreen
+import com.personal.ircclient.ui.settings.UserListsScreen
+import com.personal.ircclient.ui.theme.IRCClientTheme
 
 @Suppress("UNCHECKED_CAST")
 class ServersViewModelFactory(private val app: IrcApplication) : ViewModelProvider.Factory {
@@ -52,136 +59,349 @@ fun MainScreen() {
         }
     )
 
-    val navController = rememberNavController()
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
+    val settings by chatsViewModel.settingsState.collectAsState()
 
-    val items = listOf(
-        Screen.Servers,
-        Screen.Chats,
-        Screen.Settings
-    )
+    IRCClientTheme(themeName = settings.themeName) {
+        val navController = rememberNavController()
+        val navBackStackEntry by navController.currentBackStackEntryAsState()
+        val currentRoute = navBackStackEntry?.destination?.route
 
-    val totalUnread by chatsViewModel.totalUnreadCount.collectAsState()
+        val items = listOf(
+            Screen.Servers,
+            Screen.Channels,
+            Screen.DirectMessages,
+            Screen.Settings
+        )
 
-    Scaffold(
-        bottomBar = {
-            NavigationBar {
-                items.forEach { screen ->
-                    NavigationBarItem(
-                        icon = { 
-                            BadgedBox(
-                                badge = {
-                                    if (screen == Screen.Chats && totalUnread > 0) {
-                                        Badge { Text(totalUnread.toString()) }
-                                    }
+        val channelsUnread by chatsViewModel.channelsUnreadCount.collectAsState()
+        val privatesUnread by chatsViewModel.privatesUnreadCount.collectAsState()
+
+        var showJoinChannelDialog by remember { mutableStateOf<Long?>(null) } // serverId
+        var showNewPrivateDialog by remember { mutableStateOf<Long?>(null) } // serverId
+
+        if (showJoinChannelDialog != null) {
+            var channelName by remember { mutableStateOf("") }
+            AlertDialog(
+                onDismissRequest = { showJoinChannelDialog = null },
+                title = { Text("Join Channel") },
+                text = {
+                    OutlinedTextField(
+                        value = channelName,
+                        onValueChange = { channelName = it },
+                        label = { Text("Channel name (e.g. #linux)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        if (channelName.isNotBlank()) {
+                            val formatted = if (channelName.startsWith("#")) channelName else "#$channelName"
+                            serversViewModel.joinChannel(showJoinChannelDialog!!, formatted)
+                            navController.navigate(Screen.ChatDetail.createRoute(showJoinChannelDialog!!, formatted))
+                            showJoinChannelDialog = null
+                        }
+                    }) { Text("Join") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showJoinChannelDialog = null }) { Text("Cancel") }
+                }
+            )
+        }
+
+        if (showNewPrivateDialog != null) {
+            var nickname by remember { mutableStateOf("") }
+            AlertDialog(
+                onDismissRequest = { showNewPrivateDialog = null },
+                title = { Text("New Private Chat") },
+                text = {
+                    OutlinedTextField(
+                        value = nickname,
+                        onValueChange = { nickname = it },
+                        label = { Text("User nickname") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        if (nickname.isNotBlank()) {
+                            navController.navigate(Screen.ChatDetail.createRoute(showNewPrivateDialog!!, nickname))
+                            showNewPrivateDialog = null
+                        }
+                    }) { Text("Chat") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showNewPrivateDialog = null }) { Text("Cancel") }
+                }
+            )
+        }
+
+        Scaffold(
+            bottomBar = {
+                NavigationBar {
+                    items.forEach { screen ->
+                        NavigationBarItem(
+                            icon = { 
+                                val badgeCount = when (screen) {
+                                    Screen.Channels -> channelsUnread
+                                    Screen.DirectMessages -> privatesUnread
+                                    else -> 0
                                 }
-                            ) {
-                                Icon(screen.icon, contentDescription = screen.title)
+                                BadgedBox(
+                                    badge = {
+                                        if (badgeCount > 0) {
+                                            Badge { Text(badgeCount.toString()) }
+                                        }
+                                    }
+                                ) {
+                                    Icon(screen.icon, contentDescription = screen.title)
+                                }
+                            },
+                            label = { Text(screen.title) },
+                            selected = currentRoute == screen.route,
+                            onClick = {
+                                navController.navigate(screen.route) {
+                                    popUpTo(navController.graph.startDestinationId)
+                                    launchSingleTop = true
+                                }
                             }
+                        )
+                    }
+                }
+            },
+            floatingActionButton = {
+                when (currentRoute) {
+                    Screen.Servers.route -> {
+                        var showMenu by remember { mutableStateOf(false) }
+                        Box {
+                            FloatingActionButton(onClick = { showMenu = true }) {
+                                Icon(Icons.Default.Dns, contentDescription = "Server Actions")
+                            }
+                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Add New Server") },
+                                    leadingIcon = { Icon(Icons.Default.Add, null) },
+                                    onClick = { 
+                                        showMenu = false
+                                        navController.navigate(Screen.AddServer.route) 
+                                    }
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Connect All") },
+                                    leadingIcon = { Icon(Icons.Default.CloudDone, null) },
+                                    onClick = { 
+                                        showMenu = false
+                                        serversViewModel.servers.value.forEach { serversViewModel.connectServer(it) }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Disconnect All") },
+                                    leadingIcon = { Icon(Icons.Default.CloudOff, null) },
+                                    onClick = { 
+                                        showMenu = false
+                                        chatsViewModel.disconnectAll()
+                                    }
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Server Info (LUSERS)") },
+                                    leadingIcon = { Icon(Icons.Default.Info, null) },
+                                    onClick = { 
+                                        showMenu = false
+                                        serversViewModel.servers.value.forEach { 
+                                            chatsViewModel.sendMessage(it.id, "Status", "/LUSERS") 
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Screen.Channels.route -> {
+                        var showMenu by remember { mutableStateOf(false) }
+                        val activeServers by serversViewModel.activeServerIds.collectAsState()
+                        
+                        Box {
+                            FloatingActionButton(onClick = { showMenu = true }) {
+                                Icon(Icons.Default.ChatBubble, contentDescription = "Room Actions")
+                            }
+                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                if (activeServers.isEmpty()) {
+                                    DropdownMenuItem(text = { Text("No servers connected") }, onClick = { showMenu = false })
+                                }
+                                activeServers.forEach { serverId ->
+                                    val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
+                                    DropdownMenuItem(
+                                        text = { Text("Join Room on $serverName") },
+                                        leadingIcon = { Icon(Icons.Default.Add, null) },
+                                        onClick = { 
+                                            showMenu = false
+                                            showJoinChannelDialog = serverId
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("List Rooms on $serverName") },
+                                        leadingIcon = { Icon(Icons.Default.Search, null) },
+                                        onClick = { 
+                                            showMenu = false
+                                            navController.navigate(Screen.ChannelDiscovery.createRoute(serverId))
+                                        }
+                                    )
+                                    HorizontalDivider()
+                                }
+                            }
+                        }
+                    }
+                    Screen.DirectMessages.route -> {
+                        var showMenu by remember { mutableStateOf(false) }
+                        val activeServers by serversViewModel.activeServerIds.collectAsState()
+                        Box {
+                            FloatingActionButton(onClick = { showMenu = true }) {
+                                Icon(Icons.Default.Person, contentDescription = "Private Chat Actions")
+                            }
+                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Friend List") },
+                                    leadingIcon = { Icon(Icons.Default.People, null) },
+                                    onClick = { 
+                                        showMenu = false
+                                        navController.navigate(Screen.UserLists.route)
+                                    }
+                                )
+                                HorizontalDivider()
+                                activeServers.forEach { serverId ->
+                                    val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
+                                    DropdownMenuItem(
+                                        text = { Text("Search User on $serverName") },
+                                        leadingIcon = { Icon(Icons.Default.PersonSearch, null) },
+                                        onClick = { 
+                                            showMenu = false
+                                            showNewPrivateDialog = serverId
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        ) { innerPadding ->
+            NavHost(
+                navController = navController,
+                startDestination = Screen.Servers.route,
+                modifier = Modifier.padding(innerPadding)
+            ) {
+                composable(Screen.Servers.route) { 
+                    ServersScreen(
+                        viewModel = serversViewModel,
+                        onAddServerClick = { navController.navigate(Screen.AddServer.route) },
+                        onEditServerClick = { serverId -> 
+                            navController.navigate(Screen.EditServer.createRoute(serverId))
+                        }
+                    ) { serverId, target ->
+                        if (target == "DISCOVERY") {
+                            navController.navigate(Screen.ChannelDiscovery.createRoute(serverId))
+                        } else {
+                            navController.navigate(Screen.ChatDetail.createRoute(serverId, target))
+                        }
+                    }
+                }
+                composable(Screen.AddServer.route) {
+                    ServerEditScreen(
+                        serverId = null,
+                        viewModel = serversViewModel,
+                        onSave = { server ->
+                            serversViewModel.addServer(server)
+                            navController.popBackStack()
                         },
-                        label = { Text(screen.title) },
-                        selected = currentRoute == screen.route,
-                        onClick = {
-                            navController.navigate(screen.route) {
-                                popUpTo(navController.graph.startDestinationId)
-                                launchSingleTop = true
-                            }
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+                composable(
+                    route = Screen.EditServer.route,
+                    arguments = listOf(navArgument("serverId") { type = NavType.LongType })
+                ) { backStackEntry ->
+                    val serverId = backStackEntry.arguments?.getLong("serverId") ?: 0L
+                    ServerEditScreen(
+                        serverId = serverId,
+                        viewModel = serversViewModel,
+                        onSave = { server ->
+                            serversViewModel.updateServer(server)
+                            navController.popBackStack()
+                        },
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+                composable(Screen.Channels.route) { 
+                    val targets by chatsViewModel.activeChannels.collectAsState()
+                    ChatsScreen(
+                        targets = targets,
+                        viewModel = chatsViewModel,
+                        onTargetClick = { serverId, target ->
+                            navController.navigate(Screen.ChatDetail.createRoute(serverId, target))
                         }
                     )
                 }
-            }
-        },
-        floatingActionButton = {
-            when (currentRoute) {
-                Screen.Servers.route -> {
-                    FloatingActionButton(onClick = { navController.navigate(Screen.AddServer.route) }) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Server")
-                    }
+                composable(Screen.DirectMessages.route) { 
+                    val targets by chatsViewModel.activePrivateChats.collectAsState()
+                    ChatsScreen(
+                        targets = targets,
+                        viewModel = chatsViewModel,
+                        onTargetClick = { serverId, target ->
+                            navController.navigate(Screen.ChatDetail.createRoute(serverId, target))
+                        }
+                    )
                 }
-                Screen.Chats.route -> {
-                    FloatingActionButton(onClick = { /* TODO: New Private Chat */ }) {
-                        Icon(Icons.Default.PersonAdd, contentDescription = "New Chat")
-                    }
+                composable(Screen.Settings.route) { 
+                    SettingsScreen(
+                        viewModel = chatsViewModel,
+                        onNavigateToUserLists = { navController.navigate(Screen.UserLists.route) }
+                    )
                 }
-            }
-        }
-    ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Servers.route,
-            modifier = Modifier.padding(innerPadding)
-        ) {
-            composable(Screen.Servers.route) { 
-                ServersScreen(
-                    viewModel = serversViewModel,
-                    onAddServerClick = { navController.navigate(Screen.AddServer.route) }
-                ) { serverId, target ->
-                    if (target == "DISCOVERY") {
-                        navController.navigate(Screen.ChannelDiscovery.createRoute(serverId))
-                    } else {
-                        navController.navigate(Screen.ChatDetail.createRoute(serverId, target))
-                    }
+                composable(Screen.UserLists.route) {
+                    UserListsScreen(
+                        viewModel = chatsViewModel,
+                        onBack = { navController.popBackStack() }
+                    )
                 }
-            }
-            composable(Screen.AddServer.route) {
-                AddServerScreen(
-                    onSave = { server ->
-                        serversViewModel.addServer(server)
-                        navController.popBackStack()
-                    },
-                    onBack = { navController.popBackStack() }
-                )
-            }
-            composable(Screen.Chats.route) { 
-                ChatsScreen(
-                    viewModel = chatsViewModel,
-                    onTargetClick = { serverId, target ->
-                        navController.navigate(Screen.ChatDetail.createRoute(serverId, target))
-                    }
-                )
-            }
-            composable(Screen.Settings.route) { 
-                SettingsScreen(viewModel = chatsViewModel)
-            }
-            
-            composable(
-                route = Screen.ChannelDiscovery.route,
-                arguments = listOf(navArgument("serverId") { type = NavType.LongType })
-            ) { backStackEntry ->
-                val serverId = backStackEntry.arguments?.getLong("serverId") ?: 0L
-                ChannelListScreen(
-                    serverId = serverId,
-                    viewModel = serversViewModel,
-                    onBack = { navController.popBackStack() },
-                    onJoin = { channel ->
-                        serversViewModel.joinChannel(serverId, channel)
-                        navController.navigate(Screen.ChatDetail.createRoute(serverId, channel))
-                    }
-                )
-            }
+                
+                composable(
+                    route = Screen.ChannelDiscovery.route,
+                    arguments = listOf(navArgument("serverId") { type = NavType.LongType })
+                ) { backStackEntry ->
+                    val serverId = backStackEntry.arguments?.getLong("serverId") ?: 0L
+                    ChannelListScreen(
+                        serverId = serverId,
+                        viewModel = serversViewModel,
+                        onBack = { navController.popBackStack() },
+                        onJoin = { channel ->
+                            serversViewModel.joinChannel(serverId, channel)
+                            navController.navigate(Screen.ChatDetail.createRoute(serverId, channel))
+                        }
+                    )
+                }
 
-            composable(
-                route = Screen.ChatDetail.route,
-                arguments = listOf(
-                    navArgument("serverId") { type = NavType.LongType },
-                    navArgument("target") { type = NavType.StringType }
-                )
-            ) { backStackEntry ->
-                val serverId = backStackEntry.arguments?.getLong("serverId") ?: 0L
-                val target = backStackEntry.arguments?.getString("target") ?: ""
-                ChatDetailScreen(
-                    serverId = serverId,
-                    target = target,
-                    viewModel = chatsViewModel,
-                    onBack = { navController.popBackStack() },
-                    onNavigateToChat = { sId, t ->
-                        navController.navigate(Screen.ChatDetail.createRoute(sId, t))
-                    },
-                    onNavigateToDiscovery = { sId ->
-                        navController.navigate(Screen.ChannelDiscovery.createRoute(sId))
-                    }
-                )
+                composable(
+                    route = Screen.ChatDetail.route,
+                    arguments = listOf(
+                        navArgument("serverId") { type = NavType.LongType },
+                        navArgument("target") { type = NavType.StringType }
+                    )
+                ) { backStackEntry ->
+                    val serverId = backStackEntry.arguments?.getLong("serverId") ?: 0L
+                    val target = backStackEntry.arguments?.getString("target") ?: ""
+                    ChatDetailScreen(
+                        serverId = serverId,
+                        target = target,
+                        viewModel = chatsViewModel,
+                        onBack = { navController.popBackStack() },
+                        onNavigateToChat = { sId, t ->
+                            navController.navigate(Screen.ChatDetail.createRoute(sId, t))
+                        },
+                        onNavigateToDiscovery = { sId ->
+                            navController.navigate(Screen.ChannelDiscovery.createRoute(sId))
+                        }
+                    )
+                }
             }
         }
     }

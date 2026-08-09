@@ -30,10 +30,11 @@ class IrcApplication : Application() {
             database.channelDao(),
             database.messageDao(),
             database.userDao(),
-            database.channelDiscoveryDao()
+            database.channelDiscoveryDao(),
+            database.settingsDao()
         )
         
-        ircManager = IrcManager(repository)
+        ircManager = IrcManager(this, repository)
         ttsManager = TextToSpeechManager(this)
     }
 

@@ -20,4 +20,13 @@ interface UserDao {
 
     @Delete
     suspend fun deleteUser(user: UserEntity)
+
+    @Query("UPDATE users SET ignoreStatus = 'NONE' WHERE serverId = :serverId AND ignoreStatus = 'TEMPORAL'")
+    suspend fun resetTemporalIgnore(serverId: Long)
+
+    @Query("UPDATE users SET silenceStatus = 'NONE' WHERE serverId = :serverId AND silenceStatus = 'TEMPORAL'")
+    suspend fun resetTemporalSilence(serverId: Long)
+
+    @Query("SELECT EXISTS(SELECT 1 FROM users WHERE serverId = :serverId AND hostmask = :hostmask AND ignoreStatus != 'NONE')")
+    suspend fun isHostmaskIgnored(serverId: Long, hostmask: String): Boolean
 }

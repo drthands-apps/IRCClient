@@ -1,18 +1,46 @@
 package com.personal.ircclient.core
 
+import android.content.Context
+import android.content.Intent
 import com.personal.ircclient.core.model.IrcConfig
 import com.personal.ircclient.data.repository.IrcRepository
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.util.concurrent.ConcurrentHashMap
 
-class IrcManager(private val repository: IrcRepository) {
+class IrcManager(private val context: Context, private val repository: IrcRepository) {
     private val connections = ConcurrentHashMap<Long, IrcEngine>()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     
     init {
         scope.launch {
             repository.clearInactiveTargets()
+        }
+        scope.launch {
+            repository.settings.collect { s ->
+                s?.let {
+                    setShowEventsInRoom(it.showEventsInRoom)
+                    updateServiceState(it.runInBackground)
+                }
+            }
+        }
+    }
+
+    private fun updateServiceState(runInBackground: Boolean) {
+        val hasActiveConnections = connections.isNotEmpty()
+        val intent = Intent(context, IrcService::class.java).apply {
+            putExtra("server_count", connections.size)
+        }
+        
+        // If runInBackground is enabled, we keep the service alive if there are connections OR if we want to stay resident
+        if (runInBackground || hasActiveConnections) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        } else {
+            context.stopService(intent)
         }
     }
 
@@ -36,7 +64,7 @@ class IrcManager(private val repository: IrcRepository) {
             return existing
         }
         
-        val engine = IrcEngine(serverId, config, repository)
+        val engine = IrcEngine(context, serverId, config, repository)
         engine.showEventsInRoom = showEventsInRoom
         connections[serverId] = engine
         
@@ -51,6 +79,10 @@ class IrcManager(private val repository: IrcRepository) {
         engine.connect()
         
         _activeServers.value = connections.keys.toSet()
+        scope.launch {
+            val s = repository.settings.firstOrNull()
+            if (s != null) updateServiceState(s.runInBackground)
+        }
         return engine
     }
 
@@ -62,13 +94,26 @@ class IrcManager(private val repository: IrcRepository) {
         val current = _globalStatuses.value.toMutableMap()
         current.remove(serverId)
         _globalStatuses.value = current
+        
+        scope.launch {
+            val s = repository.settings.firstOrNull()
+            if (s != null) updateServiceState(s.runInBackground)
+        }
     }
 
     fun getEngine(serverId: Long): IrcEngine? = connections[serverId]
+
+    fun setCurrentlyViewing(serverId: Long, target: String?) {
+        connections[serverId]?.currentlyViewingTarget = target
+    }
     
     fun disconnectAll() {
         connections.values.forEach { it.disconnect() }
         connections.clear()
         _activeServers.value = emptySet()
+    }
+
+    fun updateConfig(serverId: Long, config: IrcConfig) {
+        connections[serverId]?.updateConfig(config)
     }
 }

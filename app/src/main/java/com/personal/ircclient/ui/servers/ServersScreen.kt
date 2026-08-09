@@ -27,10 +27,33 @@ import com.personal.ircclient.data.local.entities.ServerEntity
 fun ServersScreen(
     viewModel: ServersViewModel,
     onAddServerClick: () -> Unit,
+    onEditServerClick: (Long) -> Unit,
     onChannelClick: (Long, String) -> Unit
 ) {
     val servers by viewModel.servers.collectAsState()
     val statuses by viewModel.connectionStatuses.collectAsState()
+    
+    var serverToDelete by remember { mutableStateOf<ServerEntity?>(null) }
+
+    if (serverToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { serverToDelete = null },
+            title = { Text("Delete Server") },
+            text = { Text("Are you sure you want to delete '${serverToDelete?.name}'? This will also disconnect you and clear all history.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        serverToDelete?.let { viewModel.deleteServer(it) }
+                        serverToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { serverToDelete = null }) { Text("Cancel") }
+            }
+        )
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -67,7 +90,8 @@ fun ServersScreen(
                     channels = viewModel.getChannels(server.id).collectAsState(initial = emptyList()).value,
                     onConnect = { viewModel.connectServer(server) },
                     onDisconnect = { viewModel.disconnectServer(server.id) },
-                    onDelete = { viewModel.deleteServer(server) },
+                    onEdit = { onEditServerClick(server.id) },
+                    onDelete = { serverToDelete = server },
                     onJoinChannel = { viewModel.joinChannel(server.id, it) },
                     onChannelClick = { onChannelClick(server.id, it) },
                     onDiscoverClick = { onChannelClick(server.id, "DISCOVERY") }
@@ -85,6 +109,7 @@ fun ServerItem(
     channels: List<ChannelEntity>,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
     onJoinChannel: (String) -> Unit,
     onChannelClick: (String) -> Unit,
@@ -107,16 +132,16 @@ fun ServerItem(
             Box {
                 Row(
                     modifier = Modifier
-                        .padding(16.dp)
+                        .padding(12.dp)
                         .fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = server.name, style = MaterialTheme.typography.titleLarge)
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(text = server.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
                         Text(
                             text = "${server.host}:${server.port}",
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1
                         )
                         Text(
                             text = status.name,
@@ -131,11 +156,15 @@ fun ServerItem(
                         )
                     }
 
-                    Row {
-                        IconButton(onClick = if (isActive) onDisconnect else onConnect) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        IconButton(onClick = if (isActive) onDisconnect else onConnect, modifier = Modifier.size(28.dp)) {
                             Icon(
                                 imageVector = if (isActive) Icons.Default.CloudDone else Icons.Default.CloudOff,
                                 contentDescription = "Connection Status",
+                                modifier = Modifier.size(18.dp),
                                 tint = when(status) {
                                     IrcEngine.ConnectionStatus.REGISTERED -> Color.Green
                                     IrcEngine.ConnectionStatus.CONNECTED, IrcEngine.ConnectionStatus.REGISTERING -> Color.Cyan
@@ -145,25 +174,35 @@ fun ServerItem(
                                 }
                             )
                         }
-                        IconButton(onClick = onDelete) {
+                        IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Edit",
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
                             Icon(
                                 Icons.Default.Delete,
                                 contentDescription = "Delete",
+                                modifier = Modifier.size(18.dp),
                                 tint = MaterialTheme.colorScheme.error
                             )
                         }
                         if (isActive) {
-                            IconButton(onClick = { onChannelClick("Status") }) {
+                            IconButton(onClick = { onChannelClick("Status") }, modifier = Modifier.size(28.dp)) {
                                 Icon(
                                     Icons.Default.Terminal,
                                     contentDescription = "Console",
+                                    modifier = Modifier.size(18.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
                     }
                 }
-                
+
                 DropdownMenu(expanded = showServerMenu, onDismissRequest = { showServerMenu = false }) {
                     DropdownMenuItem(
                         text = { Text("Server Info") },

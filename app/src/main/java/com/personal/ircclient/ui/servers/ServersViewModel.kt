@@ -51,17 +51,55 @@ class ServersViewModel(
         }
     }
 
+    fun updateServer(server: ServerEntity) {
+        viewModelScope.launch {
+            repository.updateServer(server)
+            
+            // Map Entity to IrcConfig
+            val config = com.personal.ircclient.core.model.IrcConfig(
+                host = server.host,
+                port = server.port,
+                nickname = server.nickname,
+                altNickname = server.altNickname,
+                generateRandomNick = server.generateRandomNick,
+                username = server.username,
+                realName = server.realName,
+                password = server.password,
+                useSsl = server.useSsl,
+                allowPlainText = server.allowPlainText,
+                encoding = server.encoding,
+                useSasl = server.useSasl,
+                saslUsername = server.saslUsername,
+                saslPassword = server.saslPassword,
+                useBouncer = server.useBouncer,
+                bouncerNetwork = server.bouncerNetwork
+            )
+            ircManager.updateConfig(server.id, config)
+        }
+    }
+
     fun connectServer(server: ServerEntity) {
-        // Map ServerEntity to IrcConfig (simplified here)
+        val finalNickname = if (server.generateRandomNick) {
+            "${server.nickname}_${(100..999).random()}"
+        } else server.nickname
+
         val config = com.personal.ircclient.core.model.IrcConfig(
             host = server.host,
             port = server.port,
-            nickname = server.nickname,
+            nickname = finalNickname,
+            altNickname = server.altNickname,
+            generateRandomNick = server.generateRandomNick,
             username = server.username,
             realName = server.realName,
             password = server.password,
             useSsl = server.useSsl,
-            encoding = server.encoding
+            allowPlainText = server.allowPlainText,
+            encoding = server.encoding,
+            useSasl = server.useSasl,
+            saslUsername = server.saslUsername,
+            saslPassword = server.saslPassword,
+            useBouncer = server.useBouncer,
+            bouncerNetwork = server.bouncerNetwork
         )
         ircManager.connect(server.id, config)
     }

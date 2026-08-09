@@ -2,6 +2,7 @@ package com.personal.ircclient.core.commands
 
 import com.personal.ircclient.core.IrcEngine
 import com.personal.ircclient.data.local.entities.UserEntity
+import com.personal.ircclient.data.local.entities.UserStatus
 import com.personal.ircclient.data.repository.IrcRepository
 
 class CommandHandler(private val engine: IrcEngine, private val repository: IrcRepository? = null) {
@@ -32,10 +33,16 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
             "AWAY" -> { away(params); true }
             "NOTICE" -> { notice(params); true }
             "CTCP" -> { ctcp(params); true }
-            "IGNORE" -> { ignore(params, true); true }
-            "UNIGNORE" -> { ignore(params, false); true }
+            "NOTIFY" -> { notify(params); true }
+            "IGNORE" -> { ignore(params, UserStatus.DEFINITIVE); true }
+            "TIGNORE" -> { ignore(params, UserStatus.TEMPORAL); true }
+            "UNIGNORE" -> { ignore(params, UserStatus.NONE); true }
+            "SILENCE" -> { silence(params, UserStatus.DEFINITIVE); true }
+            "TSILENCE" -> { silence(params, UserStatus.TEMPORAL); true }
+            "UNSILENCE" -> { silence(params, UserStatus.NONE); true }
+            "FRIEND" -> { friend(params, true); true }
+            "UNFRIEND" -> { friend(params, false); true }
             "CLEAR" -> { clear(target); true }
-            "SILENCE" -> { silence(params); true }
             "OP" -> { op(target, params, true); true }
             "DEOP" -> { op(target, params, false); true }
             "VOICE" -> { voice(target, params, true); true }
@@ -64,9 +71,37 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
         engine.send("MODE $target ${if (active) "+v" else "-v"} $nick")
     }
 
-    private suspend fun silence(params: String) {
+    private suspend fun silence(nick: String, status: UserStatus) {
+        if (nick.isBlank()) return
+        if (status != UserStatus.NONE) {
+            engine.send("SILENCE +$nick")
+        } else {
+            engine.send("SILENCE -$nick")
+        }
+        
+        if (repository != null) {
+            val user = repository.getUser(nick, engine.serverId)
+            if (user != null) {
+                repository.insertUser(user.copy(silenceStatus = status))
+            } else {
+                repository.insertUser(UserEntity(nickname = nick, serverId = engine.serverId, silenceStatus = status))
+            }
+        }
+    }
+
+    private suspend fun notify(params: String) {
         if (params.isBlank()) return
-        engine.send("SILENCE $params")
+        engine.send("NOTIFY $params")
+    }
+
+    private suspend fun friend(nick: String, active: Boolean) {
+        if (nick.isBlank() || repository == null) return
+        val user = repository.getUser(nick, engine.serverId)
+        if (user != null) {
+            repository.insertUser(user.copy(isFriend = active))
+        } else {
+            repository.insertUser(UserEntity(nickname = nick, serverId = engine.serverId, isFriend = active))
+        }
     }
     
     fun getAvailableCommands(target: String, isOp: Boolean): List<String> {
@@ -104,7 +139,12 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
                 add("ME")
                 add("WHOIS")
                 add("QUERY")
+                add("NOTICE")
                 add("IGNORE")
+                add("TIGNORE")
+                add("SILENCE")
+                add("TSILENCE")
+                add("FRIEND")
             }
             add("CLEAR")
         }
@@ -115,13 +155,13 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
         repository.clearHistory(engine.serverId, target)
     }
 
-    private suspend fun ignore(nick: String, active: Boolean) {
+    private suspend fun ignore(nick: String, status: UserStatus) {
         if (nick.isBlank() || repository == null) return
         val user = repository.getUser(nick, engine.serverId)
         if (user != null) {
-            repository.insertUser(user.copy(isIgnored = active))
+            repository.insertUser(user.copy(ignoreStatus = status))
         } else {
-            repository.insertUser(UserEntity(nickname = nick, serverId = engine.serverId, isIgnored = active))
+            repository.insertUser(UserEntity(nickname = nick, serverId = engine.serverId, ignoreStatus = status))
         }
     }
 
@@ -224,6 +264,9 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
 
     private suspend fun away(message: String) {
         engine.send("AWAY${if (message.isNotEmpty()) " :$message" else ""}")
+        if (repository != null) {
+            engine.logSystemMessage("Status", if (message.isEmpty()) "You are no longer marked as away." else "You are now marked as away: $message")
+        }
     }
 
     private suspend fun notice(params: String) {
