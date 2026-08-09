@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.personal.ircclient.BuildConfig
 import com.personal.ircclient.core.utils.Localizer
 import com.personal.ircclient.data.local.entities.EventDisplayMode
 import com.personal.ircclient.ui.chats.ChatsViewModel
@@ -34,16 +35,21 @@ fun SettingsScreen(
     val lang = settings.language
     var showColorPickerBy by remember { mutableStateOf<String?>(null) }
     var selectedCategory by remember { mutableStateOf("Appearance") }
+    val isPro = BuildConfig.FLAVOR == "pro"
 
-    val categories = listOf(
+    val categories = mutableListOf(
         "Appearance" to Icons.Default.Palette,
         "Security & Privacy" to Icons.Default.Security,
         "Audio & Events" to Icons.Default.VolumeUp,
         "Radio" to Icons.Default.Radio,
         "Connectivity" to Icons.Default.Cloud,
-        "ASCII & Phrases" to Icons.Default.ArtTrack,
-        "About" to Icons.Default.Info
-    )
+        "ASCII & Phrases" to Icons.Default.ArtTrack
+    ).apply {
+        if (isPro) {
+            add("Scripts" to Icons.Default.Code)
+        }
+        add("About" to Icons.Default.Info)
+    }
 
     val categoryLabels = mapOf(
         "Appearance" to Localizer.getString("appearance", lang),
@@ -52,6 +58,7 @@ fun SettingsScreen(
         "Radio" to Localizer.getString("radio", lang),
         "Connectivity" to Localizer.getString("connectivity", lang),
         "ASCII & Phrases" to Localizer.getString("ascii_phrases", lang),
+        "Scripts" to "Scripts",
         "About" to Localizer.getString("about", lang)
     )
 
@@ -72,7 +79,7 @@ fun SettingsScreen(
 
     Row(modifier = Modifier.fillMaxSize()) {
         NavigationRail(
-            modifier = Modifier.width(80.dp),
+            modifier = Modifier.width(100.dp), // Increased for long labels
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         ) {
             categories.forEach { (name, icon) ->
@@ -80,7 +87,15 @@ fun SettingsScreen(
                     selected = selectedCategory == name,
                     onClick = { selectedCategory = name },
                     icon = { Icon(icon, contentDescription = name) },
-                    label = { Text(categoryLabels[name] ?: name, style = MaterialTheme.typography.labelSmall) }
+                    label = { 
+                        Text(
+                            text = categoryLabels[name] ?: name, 
+                            style = MaterialTheme.typography.labelSmall,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            maxLines = 2,
+                            softWrap = true
+                        ) 
+                    }
                 )
             }
         }
@@ -105,8 +120,21 @@ fun SettingsScreen(
                 "Radio" -> RadioSettings(settings, viewModel)
                 "Connectivity" -> ConnectivitySettings(settings, viewModel)
                 "ASCII & Phrases" -> AsciiManagementSettings(viewModel, lang)
+                "Scripts" -> ScriptsSettings()
                 "About" -> AboutSettings(context, lang)
             }
+        }
+    }
+}
+
+@Composable
+fun ScriptsSettings() {
+    Column {
+        Text("Scripting Engine", style = MaterialTheme.typography.titleMedium)
+        Text("Version Pro feature: Create and edit custom IRC event handlers using JavaScript.", style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(16.dp))
+        Button(onClick = { /* Not implemented yet */ }) {
+            Text("Open Script Editor")
         }
     }
 }
@@ -295,7 +323,7 @@ fun AboutSettings(context: android.content.Context, lang: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Default.LogoDev, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
         Text("FenixIRC", style = MaterialTheme.typography.headlineMedium)
-        Text("${Localizer.getString("version", lang)} 0.1 (Alpha)", style = MaterialTheme.typography.bodyMedium)
+        Text("${Localizer.getString("version", lang)} 0.2 (Alpha)", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(32.dp))
         Button(onClick = { /* Check updates */ }) { Text(Localizer.getString("check_updates", lang)) }
         Spacer(Modifier.height(16.dp))

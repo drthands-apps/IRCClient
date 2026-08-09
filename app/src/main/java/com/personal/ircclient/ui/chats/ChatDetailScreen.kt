@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.personal.ircclient.BuildConfig
 import com.personal.ircclient.data.local.entities.HandshakeStatus
 import com.personal.ircclient.data.local.entities.MessageEntity
 import com.personal.ircclient.data.local.entities.MessageType
@@ -85,9 +86,9 @@ fun ChatDetailScreen(
     val settings by viewModel.settingsState.collectAsState()
     val lang = settings.language
 
-    LaunchedEffect(serverId, target) {
+    LaunchedEffect(serverId, target, amIOp) {
         viewModel.clearUnreadCount(serverId, target)
-        if (target.startsWith("#")) {
+        if (target.startsWith("#") && amIOp) {
             viewModel.refreshBanList(serverId, target)
         }
     }
@@ -102,6 +103,8 @@ fun ChatDetailScreen(
     val isStatus = target == "Status"
     val isChannel = target.startsWith("#")
     val isUser = !isStatus && !isChannel
+    val isPro = BuildConfig.FLAVOR == "pro"
+    
     val contextAndroid = androidx.compose.ui.platform.LocalContext.current
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
 
@@ -316,7 +319,7 @@ fun ChatDetailScreen(
             val bitmap = BitmapFactory.decodeStream(inputStream)
             val watermarked = ImageUtils.addWatermark(bitmap, "IRCClient Secure")
             
-            if (isUser) {
+            if (isUser && isPro) {
                 val tempFile = java.io.File(contextAndroid.cacheDir, "upload_${System.currentTimeMillis()}.jpg")
                 val fos = java.io.FileOutputStream(tempFile)
                 watermarked.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, fos)
@@ -339,7 +342,7 @@ fun ChatDetailScreen(
             val inputStream = contextAndroid.contentResolver.openInputStream(it)
             val bytes = inputStream?.readBytes() ?: return@let
             
-            if (isUser) {
+            if (isUser && isPro) {
                 val tempFile = java.io.File(contextAndroid.cacheDir, "audio_${System.currentTimeMillis()}.m4a")
                 val fos = java.io.FileOutputStream(tempFile)
                 fos.write(bytes)
@@ -633,7 +636,7 @@ fun ChatDetailScreen(
                                     Icon(Icons.Default.People, contentDescription = null)
                                 }
                             }
-                            if (isUser && user?.encryptionKey == null) {
+                            if (isUser && user?.encryptionKey == null && isPro) {
                                 IconButton(onClick = { viewModel.initiateSecureChat(serverId, target) }) {
                                     Icon(Icons.Default.LockOpen, contentDescription = null)
                                 }
@@ -737,7 +740,7 @@ fun ChatDetailScreen(
                         .background(MaterialTheme.colorScheme.surface)
                         .windowInsetsPadding(WindowInsets.ime)
                 ) {
-                    if (isUser && user?.secureHandshakeStatus == HandshakeStatus.RECEIVED) {
+                    if (isUser && user?.secureHandshakeStatus == HandshakeStatus.RECEIVED && isPro) {
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(8.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -753,7 +756,7 @@ fun ChatDetailScreen(
                                 }
                             }
                         }
-                    } else if (isUser && user?.secureHandshakeStatus == HandshakeStatus.REQUESTED) {
+                    } else if (isUser && user?.secureHandshakeStatus == HandshakeStatus.REQUESTED && isPro) {
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(8.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -840,7 +843,7 @@ fun ChatDetailScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 placeholder = { Text(if (isStatus) Localizer.getString("enter_command", lang) else Localizer.getString("typing_message", lang)) },
                                 leadingIcon = {
-                                    if (!isStatus && !isChannel) {
+                                    if (!isStatus && !isChannel && isPro) {
                                         Box {
                                             IconButton(onClick = { showAttachMenu = true }) {
                                                 Icon(Icons.Default.Add, contentDescription = null)
@@ -887,7 +890,7 @@ fun ChatDetailScreen(
                                 }
                             }
                         }
-                        if (!isStatus && !isChannel) {
+                        if (!isStatus && !isChannel && isPro) {
                             IconButton(onClick = { 
                                 if (isRecording) {
                                     val file = recorder.stopRecording()

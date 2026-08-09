@@ -1,5 +1,6 @@
 package com.personal.ircclient.core
 
+import com.personal.ircclient.BuildConfig
 import com.personal.ircclient.core.commands.CommandHandler
 import com.personal.ircclient.core.model.IrcConfig
 import com.personal.ircclient.core.model.IrcMessage
@@ -815,10 +816,11 @@ class IrcEngine(
                     if (noisyNumerics.contains(message.command)) return
 
                     // Suppress "No such channel/nick" if it seems automated or frequent
-                    if (message.command == "401" || message.command == "403" || message.command == "482" || message.command == "502") {
-                        // For now, log them but maybe move to a "Debug" log later? 
-                        // Actually, let's keep them but avoid inserting if they are too frequent?
-                        // The user wants them GONE from Status if they are noise.
+                    // 482 = ERR_CHANOPRIVSNEEDED, 471-477 = Join errors
+                    val ignoredErrors = listOf("401", "403", "482", "502")
+                    if (ignoredErrors.contains(message.command)) {
+                        // Move noisy technical errors to Status only if strictly necessary
+                        // or just skip if we know we are probing (like ban lists)
                         return 
                     }
 
