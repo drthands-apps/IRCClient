@@ -345,7 +345,7 @@ class IrcEngine(
                 motdBuffer.clear()
             }
             "001" -> { // RPL_WELCOME
-                currentNickname = message.parameters.firstOrNull() ?: config.nickname
+                currentNickname = message.parameters.getOrNull(0) ?: config.nickname
                 _connectionStatus.value = ConnectionStatus.REGISTERED
                 logToStatus("Successfully registered as $currentNickname.")
 
@@ -411,6 +411,7 @@ class IrcEngine(
                 val currentUsers = _channelUsers.value.toMutableMap()
                 val currentPrefixes = _userPrefixes.value.toMutableMap()
                 
+                val oldUsers = currentUsers[channel] ?: emptyList()
                 val userList = mutableListOf<String>()
                 val prefixMap = currentPrefixes[channel]?.toMutableMap() ?: mutableMapOf()
 
@@ -423,11 +424,13 @@ class IrcEngine(
                     prefixMap[nick] = prefix
                 }
 
-                currentUsers[channel] = ((currentUsers[channel] ?: emptyList()) + userList).distinct()
-                currentPrefixes[channel] = prefixMap
-                
-                _channelUsers.value = currentUsers
-                _userPrefixes.value = currentPrefixes
+                val newList = (oldUsers + userList).distinct()
+                if (newList != oldUsers) {
+                    currentUsers[channel] = newList
+                    currentPrefixes[channel] = prefixMap
+                    _channelUsers.value = currentUsers
+                    _userPrefixes.value = currentPrefixes
+                }
             }
             "367" -> { // RPL_BANLIST
                 val channel = normalizeTarget(message.parameters.getOrNull(1) ?: "")
@@ -804,22 +807,31 @@ class IrcEngine(
             }
             else -> {
                 if (message.command.all { it.isDigit() }) {
+                    // Filter out NAMES responses from logs entirely
+                    if (message.command == "353" || message.command == "366") return
+
                     val text = message.parameters.drop(1).joinToString(" ")
                     val targetNick = message.parameters.getOrNull(1)
                     
+                    // Route WHOIS info to a dedicated private chat
                     val finalTarget = when (message.command) {
-                        "311", "312", "317", "318", "319", "301" -> if (targetNick != null) "WHOIS $targetNick" else "Status"
+                        "311", "312", "317", "318", "319", "301", "369", "313", "330" -> if (targetNick != null) "WHOIS $targetNick" else "Status"
                         else -> "Status"
                     }
                     
+                    if (finalTarget != "Status") {
+                        incrementUnreadCount(finalTarget)
+                    }
+
                     repository?.insertMessage(
                         MessageEntity(
                             serverId = serverId,
                             target = finalTarget,
-                            sender = "System",
+                            sender = "Server",
                             text = text,
                             isSystemMessage = true,
-                            isModifiedByScript = message.isModifiedByScript
+                            isModifiedByScript = message.isModifiedByScript,
+                            type = MessageType.TEXT
                         )
                     )
                 }

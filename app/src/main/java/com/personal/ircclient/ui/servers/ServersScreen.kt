@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import com.personal.ircclient.core.IrcEngine
 import com.personal.ircclient.data.local.entities.ChannelEntity
 import com.personal.ircclient.data.local.entities.ServerEntity
@@ -62,14 +63,44 @@ fun ServersScreen(
     ) {
         items(servers, key = { it.id }) { server ->
             val connectionStatus = statuses[server.id] ?: IrcEngine.ConnectionStatus.DISCONNECTED
+            val scope = rememberCoroutineScope()
+            var showConfirmDisconnect by remember { mutableStateOf(false) }
+            
             val dismissState = rememberSwipeToDismissBoxState(
                 confirmValueChange = {
                     if (it == SwipeToDismissBoxValue.EndToStart) {
-                        viewModel.disconnectServer(server.id)
-                        true
+                        showConfirmDisconnect = true
+                        false
                     } else false
                 }
             )
+
+            if (showConfirmDisconnect) {
+                AlertDialog(
+                    onDismissRequest = { 
+                        showConfirmDisconnect = false
+                        scope.launch { dismissState.reset() }
+                    },
+                    title = { Text("Disconnect Server") },
+                    text = { Text("Are you sure you want to disconnect from '${server.name}'?") },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                viewModel.disconnectServer(server.id)
+                                showConfirmDisconnect = false
+                                scope.launch { dismissState.reset() }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) { Text("Disconnect") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { 
+                            showConfirmDisconnect = false
+                            scope.launch { dismissState.reset() }
+                        }) { Text("Cancel") }
+                    }
+                )
+            }
 
             SwipeToDismissBox(
                 state = dismissState,

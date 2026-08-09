@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import com.personal.ircclient.data.local.dao.TargetInfo
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -30,13 +31,43 @@ fun ChatsScreen(
         } else {
             LazyColumn {
                 items(targets, key = { "${it.serverId}_${it.target}" }) { targetInfo ->
-                    val dismissState = rememberSwipeToDismissBoxState()
-                    
-                    if (dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
-                         LaunchedEffect(Unit) {
-                             viewModel.closeChat(targetInfo.serverId, targetInfo.target)
-                             dismissState.reset()
-                         }
+                    val scope = rememberCoroutineScope()
+                    var showConfirmClose by remember { mutableStateOf(false) }
+
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = {
+                            if (it == SwipeToDismissBoxValue.EndToStart) {
+                                showConfirmClose = true
+                                false
+                            } else false
+                        }
+                    )
+
+                    if (showConfirmClose) {
+                        AlertDialog(
+                            onDismissRequest = { 
+                                showConfirmClose = false
+                                scope.launch { dismissState.reset() }
+                            },
+                            title = { Text("Close Conversation") },
+                            text = { Text("Are you sure you want to close the chat with '${targetInfo.target}'?") },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        viewModel.closeChat(targetInfo.serverId, targetInfo.target)
+                                        showConfirmClose = false
+                                        scope.launch { dismissState.reset() }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                                ) { Text("Close") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { 
+                                    showConfirmClose = false
+                                    scope.launch { dismissState.reset() }
+                                }) { Text("Cancel") }
+                            }
+                        )
                     }
 
                     SwipeToDismissBox(

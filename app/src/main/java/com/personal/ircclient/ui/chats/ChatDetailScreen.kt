@@ -278,7 +278,10 @@ fun ChatDetailScreen(
     }
 
     val handleSend = { input: String ->
-        if (input.startsWith("/JOIN ", ignoreCase = true)) {
+        if (input.startsWith("/ART_SELECTOR ", ignoreCase = true)) {
+            val nick = input.removePrefix("/ART_SELECTOR ").trim()
+            showAsciiSelector = nick
+        } else if (input.startsWith("/JOIN ", ignoreCase = true)) {
             val channel = input.substring(6).trim().substringBefore(" ")
             viewModel.sendMessage(serverId, target, input)
             onNavigateToChat(serverId, channel)
@@ -362,196 +365,221 @@ fun ChatDetailScreen(
                 }
 
                 val listState = rememberLazyListState()
-                LazyColumn(state = listState) {
-                    val alphabet = ('A'..'Z').map { it.toString() }
-                    item {
-                        LazyRow(
-                            modifier = Modifier.fillMaxWidth().padding(8.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            items(alphabet) { letter ->
-                                Text(
-                                    text = letter,
-                                    modifier = Modifier.clickable {
-                                        scope.launch {
-                                            val index = sortedUsers.indexOfFirst { it.nickname.startsWith(letter, ignoreCase = true) }
-                                            if (index != -1) {
-                                                listState.animateScrollToItem(index + 1)
-                                            }
-                                        }
-                                    }.padding(4.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
+                val alphabet = ('A'..'Z').map { it.toString() }
+                
+                Row(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
+                        items(sortedUsers, key = { it.nickname }) { userInfo ->
+                            val nick = userInfo.nickname
+                            var showUserMenu by rememberSaveable { mutableStateOf(false) }
+                            var showConfirmIgnore by remember { mutableStateOf(false) }
+                            
+                            val dismissState = rememberSwipeToDismissBoxState(
+                                confirmValueChange = {
+                                    if (it == SwipeToDismissBoxValue.EndToStart) {
+                                        showConfirmIgnore = true
+                                        false // Don't dismiss yet
+                                    } else false
+                                }
+                            )
+
+                            if (showConfirmIgnore) {
+                                AlertDialog(
+                                    onDismissRequest = { 
+                                        showConfirmIgnore = false
+                                        scope.launch { dismissState.reset() }
+                                    },
+                                    title = { Text(if (amIOp) "Ban User" else "Ignore User") },
+                                    text = { Text("Are you sure you want to ${if (amIOp) "ban" else "ignore"} $nick?") },
+                                    confirmButton = {
+                                        Button(
+                                            onClick = {
+                                                if (amIOp) {
+                                                    handleSend("/MODE $target +b $nick")
+                                                } else {
+                                                    viewModel.ignoreUser(serverId, nick, UserStatus.DEFINITIVE)
+                                                }
+                                                showConfirmIgnore = false
+                                                scope.launch { dismissState.reset() }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                                        ) { Text(if (amIOp) "Ban" else "Ignore") }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { 
+                                            showConfirmIgnore = false
+                                            scope.launch { dismissState.reset() }
+                                        }) { Text("Cancel") }
+                                    }
                                 )
                             }
-                        }
-                    }
 
-                    items(sortedUsers, key = { it.nickname }) { userInfo ->
-                        val nick = userInfo.nickname
-                        var showUserMenu by rememberSaveable { mutableStateOf(false) }
-                        val dismissState = rememberSwipeToDismissBoxState()
-                        if (dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
-                            LaunchedEffect(Unit) {
-                                if (amIOp) {
-                                    handleSend("/MODE $target +b $nick")
-                                } else {
-                                    viewModel.ignoreUser(serverId, nick, UserStatus.DEFINITIVE)
-                                }
-                                dismissState.reset()
-                            }
-                        }
-
-                        SwipeToDismissBox(
-                            state = dismissState,
-                            backgroundContent = {
-                                Box(
-                                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.errorContainer).padding(horizontal = 20.dp),
-                                    contentAlignment = Alignment.CenterEnd
-                                ) {
-                                    Text(if (amIOp) "Ban" else "Ignore", color = MaterialTheme.colorScheme.onErrorContainer)
-                                }
-                            },
-                            enableDismissFromStartToEnd = false
-                        ) {
-                            Box {
-                                Surface(
-                                    onClick = { showUserMenu = true },
-                                    color = Color.Transparent,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    ListItem(
-                                        headlineContent = { 
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                if (userInfo.prefix.isNotEmpty()) {
+                            SwipeToDismissBox(
+                                state = dismissState,
+                                backgroundContent = {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.errorContainer).padding(horizontal = 20.dp),
+                                        contentAlignment = Alignment.CenterEnd
+                                    ) {
+                                        Text(if (amIOp) "Ban" else "Ignore", color = MaterialTheme.colorScheme.onErrorContainer)
+                                    }
+                                },
+                                enableDismissFromStartToEnd = false
+                            ) {
+                                Box {
+                                    Surface(
+                                        onClick = { showUserMenu = true },
+                                        color = Color.Transparent,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        ListItem(
+                                            headlineContent = { 
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Text(
-                                                        text = userInfo.prefix,
-                                                        color = when(userInfo.prefix) {
-                                                            "@", "&", "~" -> MaterialTheme.colorScheme.primary
-                                                            "+" -> MaterialTheme.colorScheme.secondary
-                                                            else -> Color.Unspecified
+                                                        text = nick,
+                                                        color = if (userInfo.ignoreStatus != UserStatus.NONE) 
+                                                                    MaterialTheme.colorScheme.outline 
+                                                                else Color.Unspecified
+                                                    )
+                                                    if (userInfo.isFriend) {
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Icon(Icons.Default.Star, contentDescription = "Friend", tint = Color(0xFFFFD700), modifier = Modifier.size(14.dp))
+                                                    }
+                                                }
+                                            },
+                                            leadingContent = { 
+                                                Box(
+                                                    modifier = Modifier.size(24.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = when {
+                                                            userInfo.prefix == "@" || userInfo.prefix == "&" || userInfo.prefix == "~" -> Icons.Default.Shield
+                                                            userInfo.prefix == "+" || userInfo.prefix == "%" -> Icons.Default.VolumeUp
+                                                            userInfo.isFriend -> Icons.Default.Person
+                                                            else -> Icons.Default.PersonOutline
                                                         },
-                                                        fontWeight = FontWeight.Bold,
-                                                        modifier = Modifier.padding(end = 4.dp)
+                                                        contentDescription = null,
+                                                        tint = if (userInfo.ignoreStatus != UserStatus.NONE) 
+                                                                    MaterialTheme.colorScheme.outline 
+                                                                else MaterialTheme.colorScheme.primary
                                                     )
                                                 }
-                                                Text(
-                                                    text = nick,
-                                                    color = if (userInfo.ignoreStatus != UserStatus.NONE) 
-                                                                MaterialTheme.colorScheme.outline 
-                                                            else Color.Unspecified
-                                                )
-                                                if (userInfo.isFriend) {
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Icon(Icons.Default.Star, contentDescription = "Friend", tint = Color(0xFFFFD700), modifier = Modifier.size(14.dp))
+                                            }
+                                        )
+                                    }
+                                    
+                                    DropdownMenu(
+                                        expanded = showUserMenu,
+                                        onDismissRequest = { showUserMenu = false }
+                                    ) {
+                                        Text(
+                                            text = nick,
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        HorizontalDivider()
+                                        DropdownMenuItem(
+                                            text = { Text("Private Chat") },
+                                            leadingIcon = { Icon(Icons.Default.Message, null) },
+                                            onClick = { 
+                                                showUserMenu = false
+                                                scope.launch { drawerState.close() }
+                                                onNavigateToChat(serverId, nick)
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Whois") },
+                                            onClick = { showUserMenu = false; handleSend("/WHOIS $nick") }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Copy Nick") },
+                                            onClick = { 
+                                                showUserMenu = false
+                                                clipboardManager.setText(AnnotatedString(nick))
+                                            }
+                                        )
+                                        HorizontalDivider()
+                                        DropdownMenuItem(
+                                            text = { Text(if (userInfo.isFriend) "Unfriend User" else "Friend User") },
+                                            leadingIcon = { Icon(Icons.Default.Star, null) },
+                                            onClick = { showUserMenu = false; viewModel.setFriend(serverId, nick, !userInfo.isFriend) }
+                                        )
+                                        HorizontalDivider()
+                                        DropdownMenuItem(
+                                            text = { Text("Send Art/Phrase") },
+                                            leadingIcon = { Icon(Icons.Default.ArtTrack, null) },
+                                            onClick = { 
+                                                showUserMenu = false
+                                                showAsciiSelector = nick
+                                            }
+                                        )
+                                        HorizontalDivider()
+                                        DropdownMenuItem(
+                                            text = { Text("Ignore (Definitive)") },
+                                            onClick = { showUserMenu = false; viewModel.ignoreUser(serverId, nick, UserStatus.DEFINITIVE) }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Ignore (Temporal)") },
+                                            onClick = { showUserMenu = false; viewModel.ignoreUser(serverId, nick, UserStatus.TEMPORAL) }
+                                        )
+                                        if (amIOp) {
+                                            val isOp = userInfo.prefix == "@" || userInfo.prefix == "&" || userInfo.prefix == "~"
+                                            DropdownMenuItem(
+                                                text = { Text(if (isOp) "Deop $nick" else "Op $nick") },
+                                                onClick = { 
+                                                    showUserMenu = false
+                                                    viewModel.setOp(serverId, target, nick, !isOp)
                                                 }
-                                            }
-                                        },
-                                        leadingContent = { 
-                                            Box(
-                                                modifier = Modifier.size(24.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = when {
-                                                        userInfo.prefix == "@" || userInfo.prefix == "&" || userInfo.prefix == "~" -> Icons.Default.Shield
-                                                        userInfo.prefix == "+" || userInfo.prefix == "%" -> Icons.Default.VolumeUp
-                                                        userInfo.isFriend -> Icons.Default.Person
-                                                        else -> Icons.Default.PersonOutline
-                                                    },
-                                                    contentDescription = null,
-                                                    tint = if (userInfo.ignoreStatus != UserStatus.NONE) 
-                                                                MaterialTheme.colorScheme.outline 
-                                                            else MaterialTheme.colorScheme.primary
-                                                )
-                                            }
+                                            )
+                                            
+                                            val banMask = userInfo.hostmask?.let { "*!*@${it.substringAfter("@")}" } ?: "$nick!*@*"
+                                            val isActuallyBanned = banList.contains(banMask) || banList.any { it.contains(nick) }
+                                            
+                                            DropdownMenuItem(
+                                                text = { Text(if (isActuallyBanned) "Unban $nick" else "Ban $nick", color = MaterialTheme.colorScheme.error) },
+                                                onClick = { 
+                                                    showUserMenu = false
+                                                    viewModel.banUser(serverId, target, banMask, !isActuallyBanned)
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Kick $nick", color = MaterialTheme.colorScheme.error) },
+                                                onClick = { showUserMenu = false; handleSend("/KICK $target $nick") }
+                                            )
                                         }
-                                    )
-                                }
-                                
-                                DropdownMenu(
-                                    expanded = showUserMenu,
-                                    onDismissRequest = { showUserMenu = false }
-                                ) {
-                                    Text(
-                                        text = nick,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    HorizontalDivider()
-                                    DropdownMenuItem(
-                                        text = { Text("Private Chat") },
-                                        leadingIcon = { Icon(Icons.Default.Message, null) },
-                                        onClick = { 
-                                            showUserMenu = false
-                                            scope.launch { drawerState.close() }
-                                            onNavigateToChat(serverId, nick)
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Whois") },
-                                        onClick = { showUserMenu = false; handleSend("/WHOIS $nick") }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Copy Nick") },
-                                        onClick = { 
-                                            showUserMenu = false
-                                            clipboardManager.setText(AnnotatedString(nick))
-                                        }
-                                    )
-                                    HorizontalDivider()
-                                    DropdownMenuItem(
-                                        text = { Text("Friend User") },
-                                        leadingIcon = { Icon(Icons.Default.Star, null) },
-                                        onClick = { showUserMenu = false; viewModel.setFriend(serverId, nick, true) }
-                                    )
-                                    HorizontalDivider()
-                                    DropdownMenuItem(
-                                        text = { Text("Send Art/Phrase") },
-                                        leadingIcon = { Icon(Icons.Default.ArtTrack, null) },
-                                        onClick = { 
-                                            showUserMenu = false
-                                            showAsciiSelector = nick
-                                        }
-                                    )
-                                    HorizontalDivider()
-                                    DropdownMenuItem(
-                                        text = { Text("Ignore (Definitive)") },
-                                        onClick = { showUserMenu = false; viewModel.ignoreUser(serverId, nick, UserStatus.DEFINITIVE) }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Ignore (Temporal)") },
-                                        onClick = { showUserMenu = false; viewModel.ignoreUser(serverId, nick, UserStatus.TEMPORAL) }
-                                    )
-                                    if (amIOp) {
-                                        val isOp = userInfo.prefix == "@" || userInfo.prefix == "&" || userInfo.prefix == "~"
-                                        DropdownMenuItem(
-                                            text = { Text(if (isOp) "Deop $nick" else "Op $nick") },
-                                            onClick = { 
-                                                showUserMenu = false
-                                                viewModel.setOp(serverId, target, nick, !isOp)
-                                            }
-                                        )
-                                        
-                                        val banMask = userInfo.hostmask?.let { "*!*@${it.substringAfter("@")}" } ?: "$nick!*@*"
-                                        val isActuallyBanned = banList.contains(banMask) || banList.any { it.contains(nick) }
-                                        
-                                        DropdownMenuItem(
-                                            text = { Text(if (isActuallyBanned) "Unban $nick" else "Ban $nick", color = MaterialTheme.colorScheme.error) },
-                                            onClick = { 
-                                                showUserMenu = false
-                                                viewModel.banUser(serverId, target, banMask, !isActuallyBanned)
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("Kick $nick", color = MaterialTheme.colorScheme.error) },
-                                            onClick = { showUserMenu = false; handleSend("/KICK $target $nick") }
-                                        )
                                     }
                                 }
                             }
+                        }
+                    }
+                    
+                    // Vertical Alphabet
+                    Column(
+                        modifier = Modifier
+                            .width(24.dp)
+                            .fillMaxHeight()
+                            .padding(vertical = 8.dp),
+                        verticalArrangement = Arrangement.SpaceEvenly,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        alphabet.forEach { letter ->
+                            Text(
+                                text = letter,
+                                modifier = Modifier.clickable {
+                                    scope.launch {
+                                        val index = sortedUsers.indexOfFirst { it.nickname.startsWith(letter, ignoreCase = true) }
+                                        if (index != -1) {
+                                            listState.animateScrollToItem(index)
+                                        }
+                                    }
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontSize = 10.sp
+                            )
                         }
                     }
                 }
@@ -970,7 +998,8 @@ fun ChatDetailScreen(
                             viewModel = viewModel,
                             settings = settings,
                             onNavigateToChat = onNavigateToChat,
-                            contextAndroid = contextAndroid
+                            contextAndroid = contextAndroid,
+                            senderInfo = senderInfo
                         )
                     }
                     item {
@@ -1061,23 +1090,51 @@ fun MessageBubble(
     viewModel: ChatsViewModel,
     settings: com.personal.ircclient.data.local.entities.SettingsEntity,
     onNavigateToChat: (Long, String) -> Unit,
-    contextAndroid: android.content.Context
+    contextAndroid: android.content.Context,
+    senderInfo: com.personal.ircclient.ui.chats.ChannelUserInfo? = null
 ) {
     val isStatus = msg.target == "Status"
     val isMe = msg.sender == "me" || msg.sender == myNick
     val isSystem = msg.isSystemMessage
     var showMenu by rememberSaveable { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
     val timeFormatter = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val banList by viewModel.getBanList(serverId, msg.target).collectAsState(initial = emptySet())
     
     val dismissState = rememberSwipeToDismissBoxState()
+    var showConfirmIgnore by remember { mutableStateOf(false) }
+
     if (dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
-        LaunchedEffect(Unit) {
-            if (!isMe && !isSystem) {
-                viewModel.ignoreUser(serverId, msg.sender, UserStatus.DEFINITIVE)
+        showConfirmIgnore = true
+    }
+
+    if (showConfirmIgnore) {
+        AlertDialog(
+            onDismissRequest = { 
+                showConfirmIgnore = false
+                scope.launch { dismissState.reset() }
+            },
+            title = { Text("Ignore User") },
+            text = { Text("Are you sure you want to ignore ${msg.sender}?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (!isMe && !isSystem) {
+                            viewModel.ignoreUser(serverId, msg.sender, UserStatus.DEFINITIVE)
+                        }
+                        showConfirmIgnore = false
+                        scope.launch { dismissState.reset() }
+                    }
+                ) { Text("Ignore") }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showConfirmIgnore = false
+                    scope.launch { dismissState.reset() }
+                }) { Text("Cancel") }
             }
-            dismissState.reset()
-        }
+        )
     }
 
     Column(
@@ -1124,19 +1181,6 @@ fun MessageBubble(
                             Text(text = "NOTICE from ${msg.sender}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.tertiary)
                         } else if (!isMe && !isStatus && !isSystem) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (senderPrefix.isNotEmpty()) {
-                                    Text(
-                                        text = senderPrefix,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Black,
-                                        color = when(senderPrefix) {
-                                            "@", "&", "~" -> MaterialTheme.colorScheme.primary
-                                            "+" -> MaterialTheme.colorScheme.secondary
-                                            else -> Color.Unspecified
-                                        },
-                                        modifier = Modifier.padding(end = 2.dp)
-                                    )
-                                }
                                 Text(text = msg.sender, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                 if (isFriend) {
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -1369,6 +1413,14 @@ fun MessageBubble(
         }
         
         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+            Text(
+                text = msg.sender,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            HorizontalDivider()
             DropdownMenuItem(
                 text = { Text("Copy Text") },
                 onClick = { 
@@ -1386,6 +1438,7 @@ fun MessageBubble(
                 )
                 DropdownMenuItem(
                     text = { Text("Private Chat") },
+                    leadingIcon = { Icon(Icons.Default.Message, null) },
                     onClick = { showMenu = false; onNavigateToChat(serverId, msg.sender) }
                 )
                 DropdownMenuItem(
@@ -1403,7 +1456,17 @@ fun MessageBubble(
                 HorizontalDivider()
                 DropdownMenuItem(
                     text = { Text(if (isFriend) "Unfriend User" else "Friend User") },
+                    leadingIcon = { Icon(Icons.Default.Star, null) },
                     onClick = { showMenu = false; viewModel.setFriend(serverId, msg.sender, !isFriend) }
+                )
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("Send Art/Phrase") },
+                    leadingIcon = { Icon(Icons.Default.ArtTrack, null) },
+                    onClick = { 
+                        showMenu = false
+                        onAction("/ART_SELECTOR ${msg.sender}") // I'll need to handle this special trigger
+                    }
                 )
                 HorizontalDivider()
                 DropdownMenuItem(
@@ -1414,22 +1477,29 @@ fun MessageBubble(
                     text = { Text("Ignore (Temporal)") },
                     onClick = { showMenu = false; viewModel.ignoreUser(serverId, msg.sender, UserStatus.TEMPORAL) }
                 )
-                DropdownMenuItem(
-                    text = { Text("Silence (Definitive)") },
-                    onClick = { showMenu = false; viewModel.silenceUser(serverId, msg.sender, UserStatus.DEFINITIVE) }
-                )
-                DropdownMenuItem(
-                    text = { Text("Silence (Temporal)") },
-                    onClick = { showMenu = false; viewModel.silenceUser(serverId, msg.sender, UserStatus.TEMPORAL) }
-                )
                 if (amIOp) {
+                    val isOp = senderPrefix == "@" || senderPrefix == "&" || senderPrefix == "~"
+                    DropdownMenuItem(
+                        text = { Text(if (isOp) "Deop ${msg.sender}" else "Op ${msg.sender}") },
+                        onClick = { 
+                            showMenu = false
+                            viewModel.setOp(serverId, msg.target, msg.sender, !isOp)
+                        }
+                    )
+
+                    val banMask = senderInfo?.hostmask?.let { "*!*@${it.substringAfter("@")}" } ?: "${msg.sender}!*@*"
+                    val isActuallyBanned = banList.contains(banMask) || banList.any { it.contains(msg.sender) }
+                    
+                    DropdownMenuItem(
+                        text = { Text(if (isActuallyBanned) "Unban ${msg.sender}" else "Ban ${msg.sender}", color = MaterialTheme.colorScheme.error) },
+                        onClick = { 
+                            showMenu = false
+                            viewModel.banUser(serverId, msg.target, banMask, !isActuallyBanned)
+                        }
+                    )
                     DropdownMenuItem(
                         text = { Text("Kick ${msg.sender}", color = MaterialTheme.colorScheme.error) },
                         onClick = { showMenu = false; onAction("/KICK ${msg.target} ${msg.sender}") }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Ban ${msg.sender}", color = MaterialTheme.colorScheme.error) },
-                        onClick = { showMenu = false; onAction("/MODE ${msg.target} +b ${msg.sender}") }
                     )
                 }
             } else if (isMe) {

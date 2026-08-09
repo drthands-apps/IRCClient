@@ -79,6 +79,19 @@ class IrcRepository(
 
     // ASCII Art & Phrases
     val asciiArt = asciiArtDao.getAll()
-    suspend fun insertAsciiArt(item: AsciiArtEntity) = asciiArtDao.insert(item)
+    suspend fun insertAsciiArt(item: AsciiArtEntity) {
+        val count = asciiArtDao.getCount()
+        if (count == 0L) {
+            insertDefaults()
+        }
+        asciiArtDao.insert(item)
+    }
+
+    private suspend fun insertDefaults() {
+        asciiArtDao.insert(AsciiArtEntity(name = "Hello", content = "Hello everyone! \\u000303Welcome!\\u000f", isPhrase = true))
+        asciiArtDao.insert(AsciiArtEntity(name = "Status", content = "\\u0002FenixIRC\\u000f \\u000302Connected\\u000f", isPhrase = true))
+        asciiArtDao.insert(AsciiArtEntity(name = "Small Bird", content = "  \\\\\\n (o>\\n// )\\n V_/_", isPhrase = false))
+    }
+
     suspend fun deleteAsciiArt(item: AsciiArtEntity) = asciiArtDao.delete(item)
 }

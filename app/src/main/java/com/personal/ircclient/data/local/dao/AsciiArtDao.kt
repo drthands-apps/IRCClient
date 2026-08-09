@@ -12,6 +12,9 @@ interface AsciiArtDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(item: AsciiArtEntity): Long
 
+    @Query("SELECT COUNT(*) FROM ascii_art")
+    suspend fun getCount(): Long
+
     @Delete
     suspend fun delete(item: AsciiArtEntity)
 }

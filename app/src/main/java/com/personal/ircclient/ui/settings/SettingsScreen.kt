@@ -95,13 +95,29 @@ fun SettingsScreen(
 @Composable
 fun AsciiManagementSettings(viewModel: ChatsViewModel) {
     val items by viewModel.asciiArt.collectAsState()
-    var showAddDialog by remember { mutableStateOf(false) }
+    var showAddDialog by remember { mutableStateOf<com.personal.ircclient.data.local.entities.AsciiArtEntity?>(null) }
+    var showColorHelp by remember { mutableStateOf(false) }
 
     Column {
-        Button(onClick = { showAddDialog = true }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Default.Add, null)
-            Spacer(Modifier.width(8.dp))
-            Text("Add New Art or Phrase")
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { showAddDialog = com.personal.ircclient.data.local.entities.AsciiArtEntity(name = "", content = "") }, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Default.Add, null)
+                Text("Add New")
+            }
+            OutlinedButton(onClick = { showColorHelp = true }) {
+                Icon(Icons.Default.ColorLens, null)
+            }
+        }
+        
+        if (showColorHelp) {
+            AlertDialog(
+                onDismissRequest = { showColorHelp = false },
+                title = { Text("IRC Color Codes") },
+                text = {
+                    Text("Use ctrl+k equivalent: \\u0003 followed by 00-15.\nExample: \\u000304Red Text\nBold: \\u0002, Reset: \\u000f")
+                },
+                confirmButton = { TextButton(onClick = { showColorHelp = false }) { Text("Got it") } }
+            )
         }
 
         Spacer(Modifier.height(16.dp))
@@ -119,7 +135,7 @@ fun AsciiManagementSettings(viewModel: ChatsViewModel) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column(modifier = Modifier.weight(1f).clickable { showAddDialog = item }) {
                             Text(item.name, style = MaterialTheme.typography.titleSmall)
                             Text(
                                 text = if (item.isPhrase) "Phrase" else "ASCII Art",
@@ -136,14 +152,14 @@ fun AsciiManagementSettings(viewModel: ChatsViewModel) {
         }
     }
 
-    if (showAddDialog) {
-        var name by remember { mutableStateOf("") }
-        var content by remember { mutableStateOf("") }
-        var isPhrase by remember { mutableStateOf(false) }
+    if (showAddDialog != null) {
+        var name by remember { mutableStateOf(showAddDialog!!.name) }
+        var content by remember { mutableStateOf(showAddDialog!!.content) }
+        var isPhrase by remember { mutableStateOf(showAddDialog!!.isPhrase) }
 
         AlertDialog(
-            onDismissRequest = { showAddDialog = false },
-            title = { Text("Add Item") },
+            onDismissRequest = { showAddDialog = null },
+            title = { Text(if (showAddDialog!!.id == 0L) "Add Item" else "Edit Item") },
             text = {
                 Column {
                     OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
@@ -158,18 +174,21 @@ fun AsciiManagementSettings(viewModel: ChatsViewModel) {
                         Checkbox(checked = isPhrase, onCheckedChange = { isPhrase = it })
                         Text("Is this a simple phrase?")
                     }
+                    if (content.contains("\\u")) {
+                        Text("Note: Color codes will be parsed on send.", style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             },
             confirmButton = {
                 Button(onClick = {
                     if (name.isNotBlank() && content.isNotBlank()) {
-                        viewModel.insertAsciiArt(name, content, isPhrase)
-                        showAddDialog = false
+                        viewModel.insertAsciiArt(name, content, isPhrase, showAddDialog?.id ?: 0L)
+                        showAddDialog = null
                     }
                 }) { Text("Save") }
             },
             dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { showAddDialog = null }) { Text("Cancel") }
             }
         )
     }
@@ -333,6 +352,32 @@ fun ConnectivitySettings(
     viewModel: ChatsViewModel
 ) {
     Column {
+        val languages = mapOf(
+            "en" to "English",
+            "es" to "Español",
+            "fr" to "Français",
+            "de" to "Deutsch",
+            "pt" to "Português",
+            "zh" to "中文"
+        )
+        var expandedLang by remember { mutableStateOf(false) }
+        
+        Box {
+            OutlinedButton(onClick = { expandedLang = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("App Language: ${languages[settings.language] ?: settings.language}")
+            }
+            DropdownMenu(expanded = expandedLang, onDismissRequest = { expandedLang = false }) {
+                languages.forEach { (code, name) ->
+                    DropdownMenuItem(text = { Text(name) }, onClick = {
+                        viewModel.updateSettings(settings.copy(language = code))
+                        expandedLang = false
+                    })
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
         SecurityToggleItem("Stay Persistent", "Maintain connection in background", settings.runInBackground) {
             viewModel.updateSettings(settings.copy(runInBackground = it))
         }

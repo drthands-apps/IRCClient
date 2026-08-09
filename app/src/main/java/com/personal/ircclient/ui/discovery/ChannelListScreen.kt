@@ -29,6 +29,13 @@ fun ChannelListScreen(
     onJoin: (String) -> Unit
 ) {
     val channels by viewModel.getDiscoveredChannels(serverId).collectAsState(initial = emptyList())
+    
+    LaunchedEffect(serverId) {
+        if (channels.isEmpty()) {
+            viewModel.refreshChannelList(serverId)
+        }
+    }
+
     var sortMode by remember { mutableStateOf("users") } // "name", "users"
     var minUsers by remember { mutableStateOf(0) }
     var showFilterDialog by remember { mutableStateOf(false) }

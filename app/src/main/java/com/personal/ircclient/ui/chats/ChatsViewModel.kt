@@ -214,9 +214,9 @@ class ChatsViewModel(
     val asciiArt: StateFlow<List<AsciiArtEntity>> = repository.asciiArt
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun insertAsciiArt(name: String, content: String, isPhrase: Boolean) {
+    fun insertAsciiArt(name: String, content: String, isPhrase: Boolean, id: Long = 0L) {
         viewModelScope.launch {
-            repository.insertAsciiArt(AsciiArtEntity(name = name, content = content, isPhrase = isPhrase))
+            repository.insertAsciiArt(AsciiArtEntity(id = id, name = name, content = content, isPhrase = isPhrase))
         }
     }
 
@@ -231,7 +231,11 @@ class ChatsViewModel(
             val lines = item.content.split("\n")
             lines.forEach { line ->
                 if (line.isNotBlank()) {
-                    sendMessage(serverId, target, line)
+                    val parsedLine = line.replace("\\u0003", "\u0003")
+                        .replace("\\u0002", "\u0002")
+                        .replace("\\u001f", "\u001f")
+                        .replace("\\u000f", "\u000f")
+                    sendMessage(serverId, target, parsedLine)
                 }
             }
         }
@@ -339,10 +343,10 @@ class ChatsViewModel(
             }
         }
         
-        return combine(engine.channelUsers, engine.userPrefixes) { users, prefixes ->
-            val nicks = users[normalizedName] ?: emptyList()
-            val prefixMap = prefixes[normalizedName] ?: emptyMap()
-            
+        val filteredUsers = engine.channelUsers.map { it[normalizedName] ?: emptyList() }.distinctUntilChanged()
+        val filteredPrefixes = engine.userPrefixes.map { it[normalizedName] ?: emptyMap() }.distinctUntilChanged()
+
+        return combine(filteredUsers, filteredPrefixes) { nicks, prefixMap ->
             nicks.map { nick ->
                 val userEntity = repository.getUser(nick, serverId)
                 ChannelUserInfo(

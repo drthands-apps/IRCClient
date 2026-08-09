@@ -2,12 +2,8 @@ package com.personal.ircclient.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
-import com.personal.ircclient.data.local.dao.ChannelDao
-import com.personal.ircclient.data.local.dao.ChannelDiscoveryDao
-import com.personal.ircclient.data.local.dao.MessageDao
-import com.personal.ircclient.data.local.dao.ServerDao
-import com.personal.ircclient.data.local.dao.SettingsDao
-import com.personal.ircclient.data.local.dao.UserDao
+import androidx.sqlite.db.SupportSQLiteDatabase
+import com.personal.ircclient.data.local.dao.*
 import com.personal.ircclient.data.local.entities.*
 
 @Database(
@@ -20,7 +16,7 @@ import com.personal.ircclient.data.local.entities.*
         SettingsEntity::class,
         AsciiArtEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
