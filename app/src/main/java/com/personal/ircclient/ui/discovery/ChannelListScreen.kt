@@ -40,7 +40,7 @@ fun ChannelListScreen(
     }
 
     var sortMode by remember { mutableStateOf("users") } 
-    var minUsers by remember { mutableStateOf(0) }
+    var minUsers by remember { mutableIntStateOf(10) }
     var showFilterDialog by remember { mutableStateOf(false) }
 
     val filteredChannels = remember(channels, sortMode, minUsers) {

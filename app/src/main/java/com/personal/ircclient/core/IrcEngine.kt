@@ -808,8 +808,19 @@ class IrcEngine(
             else -> {
                 if (message.command.all { it.isDigit() }) {
                     // Filter out non-UI numerics and frequent updates
+                    // 352 = RPL_WHOREPLY, 315 = RPL_ENDOFWHO
                     // 367 = RPL_BANLIST, 368 = RPL_ENDOFBANLIST
-                    if (message.command == "353" || message.command == "366" || message.command == "367" || message.command == "368" || message.command == "324" || message.command == "329") return
+                    // 401 = ERR_NOSUCHNICK, 403 = ERR_NOSUCHCHANNEL (internal noise)
+                    val noisyNumerics = listOf("352", "315", "353", "366", "367", "368", "324", "329")
+                    if (noisyNumerics.contains(message.command)) return
+
+                    // Suppress "No such channel/nick" if it seems automated or frequent
+                    if (message.command == "401" || message.command == "403" || message.command == "482" || message.command == "502") {
+                        // For now, log them but maybe move to a "Debug" log later? 
+                        // Actually, let's keep them but avoid inserting if they are too frequent?
+                        // The user wants them GONE from Status if they are noise.
+                        return 
+                    }
 
                     val text = message.parameters.drop(1).joinToString(" ")
                     val targetNick = message.parameters.getOrNull(1)
@@ -865,6 +876,7 @@ class IrcEngine(
     }
 
     fun fetchBanList(channel: String) {
+        if (_connectionStatus.value != ConnectionStatus.REGISTERED) return
         val chanNorm = normalizeTarget(channel)
         val current = _banLists.value.toMutableMap()
         current[chanNorm] = emptySet()

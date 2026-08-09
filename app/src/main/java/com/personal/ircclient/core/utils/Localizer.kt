@@ -143,7 +143,8 @@ object Localizer {
             "auto_connect" to "Auto-Connect on Start",
             "reconnect_channels" to "Auto-Join Channels",
             "encoding" to "Encoding / Alphabet",
-            "save_changes" to "Save Changes"
+            "save_changes" to "Save Changes",
+            "total_users" to "Total users"
         ),
         "es" to mapOf(
             "app_name" to "FenixIRC",
@@ -286,7 +287,8 @@ object Localizer {
             "auto_connect" to "Auto-Conectar al Inicio",
             "reconnect_channels" to "Reconectar Canales Abiertos",
             "encoding" to "Codificación / Alfabeto",
-            "save_changes" to "Guardar Cambios"
+            "save_changes" to "Guardar Cambios",
+            "total_users" to "Usuarios totales"
         ),
         "fr" to mapOf(
             "app_name" to "FenixIRC",

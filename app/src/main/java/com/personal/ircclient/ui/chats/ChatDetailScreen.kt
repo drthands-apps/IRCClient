@@ -82,6 +82,9 @@ fun ChatDetailScreen(
     val friends = usersForServer.filter { it.serverId == serverId && it.isFriend }.map { it.nickname }.toSet()
     val banList by viewModel.getBanList(serverId, target).collectAsState(initial = emptySet())
 
+    val settings by viewModel.settingsState.collectAsState()
+    val lang = settings.language
+
     LaunchedEffect(serverId, target) {
         viewModel.clearUnreadCount(serverId, target)
         if (target.startsWith("#")) {
@@ -125,8 +128,6 @@ fun ChatDetailScreen(
     var showClearConfirm by remember { mutableStateOf(false) }
     var showAsciiSelector by remember { mutableStateOf<String?>(null) } // target user nick
     var searchQuery by remember { mutableStateOf("") }
-    val settings by viewModel.settingsState.collectAsState()
-    val lang = settings.language
     val asciiArtItems by viewModel.asciiArt.collectAsState()
 
     if (showAsciiSelector != null) {
@@ -358,7 +359,11 @@ fun ChatDetailScreen(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet {
-                Text("Users in $target", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "${Localizer.getString("total_users", lang)}: ${channelUsers.size}", 
+                    modifier = Modifier.padding(16.dp), 
+                    style = MaterialTheme.typography.titleMedium
+                )
                 HorizontalDivider()
                 val sortedUsers = remember(channelUsers) {
                     channelUsers.sortedWith(
@@ -1450,7 +1455,7 @@ fun MessageBubble(
                     leadingIcon = { Icon(Icons.Default.ArtTrack, null) },
                     onClick = { 
                         showMenu = false
-                        onAction("/ART_SELECTOR ${msg.sender}") // I'll need to handle this special trigger
+                        onAction("/ART_SELECTOR ${msg.sender}")
                     }
                 )
                 HorizontalDivider()
