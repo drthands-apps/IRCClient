@@ -189,6 +189,54 @@ class ChatsViewModel(
         updateSettings(settingsState.value.copy(soundOnBan = enabled))
     }
 
+    fun getBanList(serverId: Long, channel: String): StateFlow<Set<String>> {
+        val engine = ircManager.getEngine(serverId) ?: return MutableStateFlow(emptySet())
+        engine.fetchBanList(channel)
+        return engine.banLists.map { it[normalizeTarget(channel)] ?: emptySet() }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+    }
+
+    fun banUser(serverId: Long, channel: String, mask: String, active: Boolean) {
+        viewModelScope.launch {
+            val engine = ircManager.getEngine(serverId)
+            engine?.send("MODE $channel ${if (active) "+b" else "-b"} $mask")
+        }
+    }
+
+    fun setOp(serverId: Long, channel: String, nickname: String, active: Boolean) {
+        viewModelScope.launch {
+            val engine = ircManager.getEngine(serverId)
+            engine?.send("MODE $channel ${if (active) "+o" else "-o"} $nickname")
+        }
+    }
+
+    // ASCII Art & Phrases
+    val asciiArt: StateFlow<List<AsciiArtEntity>> = repository.asciiArt
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun insertAsciiArt(name: String, content: String, isPhrase: Boolean) {
+        viewModelScope.launch {
+            repository.insertAsciiArt(AsciiArtEntity(name = name, content = content, isPhrase = isPhrase))
+        }
+    }
+
+    fun deleteAsciiArt(item: AsciiArtEntity) {
+        viewModelScope.launch {
+            repository.deleteAsciiArt(item)
+        }
+    }
+
+    fun sendAsciiArt(serverId: Long, target: String, item: AsciiArtEntity) {
+        viewModelScope.launch {
+            val lines = item.content.split("\n")
+            lines.forEach { line ->
+                if (line.isNotBlank()) {
+                    sendMessage(serverId, target, line)
+                }
+            }
+        }
+    }
+
     // --- Original UI Flow & Repo bridge ---
     
     val activeTargets: StateFlow<List<TargetInfo>> = repository.getAllActiveTargets()
@@ -301,7 +349,8 @@ class ChatsViewModel(
                     nickname = nick,
                     prefix = prefixMap[nick] ?: "",
                     isFriend = userEntity?.isFriend ?: false,
-                    ignoreStatus = userEntity?.ignoreStatus ?: UserStatus.NONE
+                    ignoreStatus = userEntity?.ignoreStatus ?: UserStatus.NONE,
+                    hostmask = userEntity?.hostmask
                 )
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -516,5 +565,6 @@ data class ChannelUserInfo(
     val nickname: String,
     val prefix: String,
     val isFriend: Boolean,
-    val ignoreStatus: UserStatus
+    val ignoreStatus: UserStatus,
+    val hostmask: String? = null
 )

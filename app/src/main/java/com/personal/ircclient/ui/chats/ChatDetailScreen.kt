@@ -7,6 +7,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -77,6 +79,7 @@ fun ChatDetailScreen(
     val amIOp by viewModel.isUserOp(serverId, target, myNick).collectAsState(initial = false)
     val usersForServer by viewModel.allChatUsers.collectAsState()
     val friends = usersForServer.filter { it.serverId == serverId && it.isFriend }.map { it.nickname }.toSet()
+    val banList by viewModel.getBanList(serverId, target).collectAsState(initial = emptySet())
 
     LaunchedEffect(serverId, target) {
         viewModel.clearUnreadCount(serverId, target)
@@ -116,8 +119,38 @@ fun ChatDetailScreen(
     var showQuickSearch by remember { mutableStateOf(false) }
     var showFormattingTools by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
+    var showAsciiSelector by remember { mutableStateOf<String?>(null) } // target user nick
     var searchQuery by remember { mutableStateOf("") }
     val settings by viewModel.settingsState.collectAsState()
+    val asciiArtItems by viewModel.asciiArt.collectAsState()
+
+    if (showAsciiSelector != null) {
+        AlertDialog(
+            onDismissRequest = { showAsciiSelector = null },
+            title = { Text("Send Art or Phrase") },
+            text = {
+                Column(modifier = Modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState())) {
+                    if (asciiArtItems.isEmpty()) {
+                        Text("No saved items. Go to Settings > ASCII & Phrases to add some.")
+                    } else {
+                        asciiArtItems.forEach { item ->
+                            ListItem(
+                                headlineContent = { Text(item.name) },
+                                supportingContent = { Text(if (item.isPhrase) "Phrase" else "ASCII Art") },
+                                modifier = Modifier.clickable {
+                                    viewModel.sendAsciiArt(serverId, showAsciiSelector!!, item)
+                                    showAsciiSelector = null
+                                }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAsciiSelector = null }) { Text("Close") }
+            }
+        )
+    }
 
     if (showClearConfirm) {
         AlertDialog(
@@ -461,13 +494,28 @@ fun ChatDetailScreen(
                                         onClick = { showUserMenu = false; viewModel.ignoreUser(serverId, nick, UserStatus.TEMPORAL) }
                                     )
                                     if (amIOp) {
+                                        val isOp = userInfo.prefix == "@" || userInfo.prefix == "&" || userInfo.prefix == "~"
+                                        DropdownMenuItem(
+                                            text = { Text(if (isOp) "Deop $nick" else "Op $nick") },
+                                            onClick = { 
+                                                showUserMenu = false
+                                                viewModel.setOp(serverId, target, nick, !isOp)
+                                            }
+                                        )
+                                        
+                                        val banMask = userInfo.hostmask?.let { "*!*@${it.substringAfter("@")}" } ?: "$nick!*@*"
+                                        val isActuallyBanned = banList.contains(banMask) || banList.any { it.contains(nick) }
+                                        
+                                        DropdownMenuItem(
+                                            text = { Text(if (isActuallyBanned) "Unban $nick" else "Ban $nick", color = MaterialTheme.colorScheme.error) },
+                                            onClick = { 
+                                                showUserMenu = false
+                                                viewModel.banUser(serverId, target, banMask, !isActuallyBanned)
+                                            }
+                                        )
                                         DropdownMenuItem(
                                             text = { Text("Kick $nick", color = MaterialTheme.colorScheme.error) },
                                             onClick = { showUserMenu = false; handleSend("/KICK $target $nick") }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("Ban $nick", color = MaterialTheme.colorScheme.error) },
-                                            onClick = { showUserMenu = false; handleSend("/MODE $target +b $nick") }
                                         )
                                     }
                                 }

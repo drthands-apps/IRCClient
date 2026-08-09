@@ -10,7 +10,8 @@ class IrcRepository(
     private val messageDao: MessageDao,
     private val userDao: UserDao,
     private val channelDiscoveryDao: ChannelDiscoveryDao,
-    private val settingsDao: SettingsDao
+    private val settingsDao: SettingsDao,
+    private val asciiArtDao: com.personal.ircclient.data.local.dao.AsciiArtDao
 ) {
     // Settings
     val settings: Flow<SettingsEntity?> = settingsDao.getSettings()
@@ -75,4 +76,9 @@ class IrcRepository(
     fun getDiscoveredChannels(serverId: Long) = channelDiscoveryDao.getDiscoveredChannels(serverId)
     suspend fun insertDiscovered(channel: ChannelDiscoveryEntity) = channelDiscoveryDao.insertDiscovered(channel)
     suspend fun clearDiscovered(serverId: Long) = channelDiscoveryDao.clearDiscovered(serverId)
+
+    // ASCII Art & Phrases
+    val asciiArt = asciiArtDao.getAll()
+    suspend fun insertAsciiArt(item: AsciiArtEntity) = asciiArtDao.insert(item)
+    suspend fun deleteAsciiArt(item: AsciiArtEntity) = asciiArtDao.delete(item)
 }

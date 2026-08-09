@@ -89,6 +89,9 @@ class IrcEngine(
     private val _userPrefixes = MutableStateFlow<Map<String, Map<String, String>>>(emptyMap())
     val userPrefixes: StateFlow<Map<String, Map<String, String>>> = _userPrefixes.asStateFlow()
 
+    private val _banLists = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
+    val banLists: StateFlow<Map<String, Set<String>>> = _banLists.asStateFlow()
+
     private val _currentNicknameFlow = MutableStateFlow(config.nickname)
     val currentNicknameFlow: StateFlow<String> = _currentNicknameFlow.asStateFlow()
 
@@ -426,6 +429,19 @@ class IrcEngine(
                 _channelUsers.value = currentUsers
                 _userPrefixes.value = currentPrefixes
             }
+            "367" -> { // RPL_BANLIST
+                val channel = normalizeTarget(message.parameters.getOrNull(1) ?: "")
+                val mask = message.parameters.getOrNull(2) ?: ""
+                if (channel.isNotEmpty() && mask.isNotEmpty()) {
+                    val current = _banLists.value.toMutableMap()
+                    val list = (current[channel] ?: emptySet()) + mask
+                    current[channel] = list
+                    _banLists.value = current
+                }
+            }
+            "368" -> { // RPL_ENDOFBANLIST
+                // Maybe log something?
+            }
             "JOIN" -> {
                 val channelRaw = message.parameters.firstOrNull() ?: return
                 val channelName = normalizeTarget(channelRaw)
@@ -527,33 +543,61 @@ class IrcEngine(
             }
             "MODE" -> {
                 val channel = message.parameters.getOrNull(0) ?: return
-                val mode = message.parameters.getOrNull(1) ?: ""
-                val target = message.parameters.getOrNull(2) ?: ""
+                val modeStr = message.parameters.getOrNull(1) ?: ""
                 
                 // If it's a user mode change (like +i or +z), log to Status
                 if (channel == currentNickname) {
-                    logSystemMessage("Status", "Mode changed: $mode $target")
+                    logSystemMessage("Status", "User mode changed: $modeStr ${message.parameters.drop(2).joinToString(" ")}")
                     return
                 }
 
-                if (mode == "+b" && target.contains(currentNickname)) {
-                    logEvent(channel, "You have been BANNED from $channel", EventDisplayMode.ROOM, MessageType.BAN)
-                    updateChannelStatus(channel, joined = false, banned = true)
+                if (isChannel(channel)) {
+                    val chanNorm = normalizeTarget(channel)
+                    var adding = true
+                    var paramIndex = 2
                     
-                    scope.launch {
-                        val s = repository?.settings?.firstOrNull()
-                        if (s?.soundOnBan == true) {
-                            NotificationHelper.playNotificationSound(context, s)
+                    val currentPrefixes = _userPrefixes.value.toMutableMap()
+                    val chanPrefixes = currentPrefixes[chanNorm]?.toMutableMap() ?: mutableMapOf()
+                    val currentBans = _banLists.value.toMutableMap()
+                    val chanBans = currentBans[chanNorm]?.toMutableSet() ?: mutableSetOf()
+                    
+                    for (char in modeStr) {
+                        when (char) {
+                            '+' -> adding = true
+                            '-' -> adding = false
+                            'o' -> {
+                                val target = message.parameters.getOrNull(paramIndex++) ?: continue
+                                if (adding) chanPrefixes[target] = "@" else if (chanPrefixes[target] == "@") chanPrefixes.remove(target)
+                                scope.launch { if (kickMode != EventDisplayMode.IGNORE) logEvent(channel, "Mode change: ${if (adding) "+" else "-"}o $target", kickMode, MessageType.KICK) }
+                            }
+                            'v' -> {
+                                val target = message.parameters.getOrNull(paramIndex++) ?: continue
+                                if (adding) chanPrefixes[target] = "+" else if (chanPrefixes[target] == "+") chanPrefixes.remove(target)
+                                scope.launch { if (kickMode != EventDisplayMode.IGNORE) logEvent(channel, "Mode change: ${if (adding) "+" else "-"}v $target", kickMode, MessageType.KICK) }
+                            }
+                            'b' -> {
+                                val target = message.parameters.getOrNull(paramIndex++) ?: continue
+                                if (adding) chanBans.add(target) else chanBans.remove(target)
+                                
+                                scope.launch {
+                                    if (banMode != EventDisplayMode.IGNORE) logEvent(channel, "Mode change: ${if (adding) "+" else "-"}b $target", banMode, MessageType.BAN)
+                                    
+                                    // Special check for own ban
+                                    if (adding && target.contains(currentNickname, ignoreCase = true)) {
+                                        logEvent(channel, "You have been BANNED from $channel", EventDisplayMode.ROOM, MessageType.BAN)
+                                        updateChannelStatus(chanNorm, joined = false, banned = true)
+                                        val s = repository?.settings?.firstOrNull()
+                                        if (s?.soundOnBan == true) NotificationHelper.playNotificationSound(context, s)
+                                    }
+                                }
+                            }
                         }
                     }
-                } else if (mode.contains("b")) {
-                    if (banMode != EventDisplayMode.IGNORE) {
-                        logEvent(channel, "Mode change: $mode $target", banMode, MessageType.BAN)
-                    }
-                } else {
-                    if (kickMode != EventDisplayMode.IGNORE) {
-                        logEvent(channel, "Mode change: $mode $target", kickMode, MessageType.KICK)
-                    }
+                    
+                    currentPrefixes[chanNorm] = chanPrefixes
+                    _userPrefixes.value = currentPrefixes
+                    currentBans[chanNorm] = chanBans
+                    _banLists.value = currentBans
                 }
             }
         }
@@ -654,13 +698,21 @@ class IrcEngine(
                     }
                 }
                 
+                val isChan = isChannel(rawTarget)
+                var isOpHere = false
+                if (isChan) {
+                    val prefixes = _userPrefixes.value[normalizeTarget(rawTarget)] ?: emptyMap()
+                    val myPrefix = prefixes[currentNickname] ?: ""
+                    isOpHere = myPrefix == "@" || myPrefix == "&" || myPrefix == "~"
+                }
+
                 val user = repository.getUser(sender, serverId)
-                if (user != null) {
+                if (user != null && !isOpHere) {
                     if (user.ignoreStatus != UserStatus.NONE) return
                     if (user.silenceStatus != UserStatus.NONE) return
                 }
                 
-                if (hostmask != null && repository.isHostmaskIgnored(serverId, hostmask)) return
+                if (hostmask != null && !isOpHere && repository.isHostmaskIgnored(serverId, hostmask)) return
 
                 val isPrivateToMe = rawTarget.equals(currentNickname, ignoreCase = true)
                 
@@ -797,6 +849,16 @@ class IrcEngine(
 
     suspend fun sendMessage(message: IrcMessage) {
         send(message.build())
+    }
+
+    fun fetchBanList(channel: String) {
+        val chanNorm = normalizeTarget(channel)
+        val current = _banLists.value.toMutableMap()
+        current[chanNorm] = emptySet()
+        _banLists.value = current
+        scope.launch {
+            send("MODE $channel b")
+        }
     }
 
     private suspend fun updateChannelStatus(name: String, joined: Boolean, banned: Boolean? = null) {

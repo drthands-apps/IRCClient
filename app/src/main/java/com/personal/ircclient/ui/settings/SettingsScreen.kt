@@ -38,6 +38,7 @@ fun SettingsScreen(
         "Security & Privacy" to Icons.Default.Security,
         "Audio & Events" to Icons.Default.VolumeUp,
         "Connectivity" to Icons.Default.Cloud,
+        "ASCII & Phrases" to Icons.Default.ArtTrack,
         "About" to Icons.Default.Info
     )
 
@@ -84,9 +85,93 @@ fun SettingsScreen(
                 "Security & Privacy" -> SecuritySettings(settings, viewModel, onNavigateToUserLists)
                 "Audio & Events" -> AudioSettings(settings, viewModel)
                 "Connectivity" -> ConnectivitySettings(settings, viewModel)
+                "ASCII & Phrases" -> AsciiManagementSettings(viewModel)
                 "About" -> AboutSettings(context)
             }
         }
+    }
+}
+
+@Composable
+fun AsciiManagementSettings(viewModel: ChatsViewModel) {
+    val items by viewModel.asciiArt.collectAsState()
+    var showAddDialog by remember { mutableStateOf(false) }
+
+    Column {
+        Button(onClick = { showAddDialog = true }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Add, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Add New Art or Phrase")
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        if (items.isEmpty()) {
+            Text("No items saved yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+        } else {
+            items.forEach { item ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(item.name, style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                text = if (item.isPhrase) "Phrase" else "ASCII Art",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        IconButton(onClick = { viewModel.deleteAsciiArt(item) }) {
+                            Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAddDialog) {
+        var name by remember { mutableStateOf("") }
+        var content by remember { mutableStateOf("") }
+        var isPhrase by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            title = { Text("Add Item") },
+            text = {
+                Column {
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = content, 
+                        onValueChange = { content = it }, 
+                        label = { Text("Content (Multi-line)") }, 
+                        modifier = Modifier.fillMaxWidth().height(150.dp)
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = isPhrase, onCheckedChange = { isPhrase = it })
+                        Text("Is this a simple phrase?")
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (name.isNotBlank() && content.isNotBlank()) {
+                        viewModel.insertAsciiArt(name, content, isPhrase)
+                        showAddDialog = false
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddDialog = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 
