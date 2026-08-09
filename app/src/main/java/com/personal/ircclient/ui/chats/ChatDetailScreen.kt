@@ -43,6 +43,7 @@ import com.personal.ircclient.data.local.entities.HandshakeStatus
 import com.personal.ircclient.data.local.entities.MessageEntity
 import com.personal.ircclient.data.local.entities.MessageType
 import com.personal.ircclient.data.local.entities.UserStatus
+import com.personal.ircclient.core.utils.Localizer
 import com.personal.ircclient.core.utils.LinkHandler
 import com.personal.ircclient.core.utils.ImageUtils
 import com.personal.ircclient.core.utils.FileUploader
@@ -378,7 +379,7 @@ fun ChatDetailScreen(
                                 confirmValueChange = {
                                     if (it == SwipeToDismissBoxValue.EndToStart) {
                                         showConfirmIgnore = true
-                                        false // Don't dismiss yet
+                                        false
                                     } else false
                                 }
                             )
@@ -482,7 +483,7 @@ fun ChatDetailScreen(
                                         )
                                         HorizontalDivider()
                                         DropdownMenuItem(
-                                            text = { Text("Private Chat") },
+                                            text = { Text(Localizer.getString("private_chat", settings.language)) },
                                             leadingIcon = { Icon(Icons.Default.Message, null) },
                                             onClick = { 
                                                 showUserMenu = false
@@ -491,7 +492,7 @@ fun ChatDetailScreen(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Whois") },
+                                            text = { Text(Localizer.getString("whois", settings.language)) },
                                             onClick = { showUserMenu = false; handleSend("/WHOIS $nick") }
                                         )
                                         DropdownMenuItem(
@@ -518,11 +519,11 @@ fun ChatDetailScreen(
                                         )
                                         HorizontalDivider()
                                         DropdownMenuItem(
-                                            text = { Text("Ignore (Definitive)") },
+                                            text = { Text(Localizer.getString("ignore", settings.language) + " (Definitive)") },
                                             onClick = { showUserMenu = false; viewModel.ignoreUser(serverId, nick, UserStatus.DEFINITIVE) }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Ignore (Temporal)") },
+                                            text = { Text(Localizer.getString("ignore", settings.language) + " (Temporal)") },
                                             onClick = { showUserMenu = false; viewModel.ignoreUser(serverId, nick, UserStatus.TEMPORAL) }
                                         )
                                         if (amIOp) {
@@ -546,7 +547,7 @@ fun ChatDetailScreen(
                                                 }
                                             )
                                             DropdownMenuItem(
-                                                text = { Text("Kick $nick", color = MaterialTheme.colorScheme.error) },
+                                                text = { Text(Localizer.getString("kick", settings.language) + " $nick", color = MaterialTheme.colorScheme.error) },
                                                 onClick = { showUserMenu = false; handleSend("/KICK $target $nick") }
                                             )
                                         }
@@ -556,7 +557,6 @@ fun ChatDetailScreen(
                         }
                     }
                     
-                    // Vertical Alphabet
                     Column(
                         modifier = Modifier
                             .width(24.dp)
@@ -916,66 +916,49 @@ fun ChatDetailScreen(
             }
         ) { padding ->
             Column(modifier = Modifier.padding(padding)) {
-                if (isChannel) {
-                    val radioBots = mapOf(
-                        "distritosonoro" to ("Distrito Sonoro" to "https://stream.zeno.fm/afd3qhkxz08uv"),
-                        "mundomusica" to ("Mundo Musica" to "https://stream.radio-amistad.net:8002/stream"),
-                        "slayradio" to ("Slay Radio (Retro)" to "https://www.slayradio.org/tune_in.php/128kbps.m3u"),
-                        "kohina" to ("Kohina (Chiptune)" to "http://streaming.kohina.com:8000/stream.m3u"),
-                        "nectarine" to ("Nectarine (Demoscene)" to "https://scenestream.net/demovibes/nectarine.m3u")
-                    )
+                if (settings.isRadioPluginEnabled) {
+                    val streamUrl = settings.selectedRadioUrl
+                    val radioName = settings.selectedRadioName
+                    
+                    if (streamUrl.isNotEmpty()) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(8.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                        ) {
+                            val isPlayingByPlayer by RadioPlayer.isPlaying.collectAsState()
+                            val currentUrlByPlayer by RadioPlayer.currentUrl.collectAsState()
+                            val isCurrentStation = currentUrlByPlayer == streamUrl && isPlayingByPlayer
 
-                    val activeBot = remember(channelUsers) {
-                        channelUsers.find { radioBots.containsKey(it.nickname.lowercase()) }
-                    }
-
-                    activeBot?.let { bot ->
-                        val (radioName, streamUrl) = radioBots[bot.nickname.lowercase()]!!
-                        
-                            Card(
-                                modifier = Modifier.fillMaxWidth().padding(8.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                val isPlayingByPlayer by RadioPlayer.isPlaying.collectAsState()
-                                val currentUrlByPlayer by RadioPlayer.currentUrl.collectAsState()
-                                val isCurrentStation = currentUrlByPlayer == streamUrl && isPlayingByPlayer
-
-                                Row(
-                                    modifier = Modifier.padding(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Icon(
+                                        imageVector = if (isCurrentStation) Icons.Default.PauseCircle else Icons.Default.Radio, 
+                                        contentDescription = null,
+                                        tint = if (isCurrentStation) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = if (isCurrentStation) "Playing $radioName..." else "Radio: $radioName", 
+                                        style = MaterialTheme.typography.titleSmall,
+                                        maxLines = 1
+                                    )
+                                }
+                                Row {
+                                    IconButton(onClick = {
+                                        RadioPlayer.play(contextAndroid, streamUrl)
+                                    }) {
                                         Icon(
-                                            imageVector = if (isCurrentStation) Icons.Default.PauseCircle else Icons.Default.Radio, 
-                                            contentDescription = null,
-                                            tint = if (isCurrentStation) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSecondaryContainer
+                                            imageVector = if (isCurrentStation) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                            contentDescription = "Toggle Radio"
                                         )
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(
-                                            text = if (isCurrentStation) "Playing $radioName..." else "Radio $radioName", 
-                                            style = MaterialTheme.typography.titleSmall,
-                                            maxLines = 1
-                                        )
-                                    }
-                                    Row {
-                                        IconButton(onClick = {
-                                            RadioPlayer.play(contextAndroid, streamUrl)
-                                        }) {
-                                            Icon(
-                                                imageVector = if (isCurrentStation) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                                contentDescription = "Toggle Radio"
-                                            )
-                                        }
-                                        IconButton(onClick = {
-                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(streamUrl))
-                                            contextAndroid.startActivity(intent)
-                                        }) {
-                                            Icon(Icons.Default.OpenInNew, contentDescription = "External Player")
-                                        }
                                     }
                                 }
                             }
+                        }
                     }
                 }
 
@@ -1437,7 +1420,7 @@ fun MessageBubble(
                     }
                 )
                 DropdownMenuItem(
-                    text = { Text("Private Chat") },
+                    text = { Text(Localizer.getString("private_chat", settings.language)) },
                     leadingIcon = { Icon(Icons.Default.Message, null) },
                     onClick = { showMenu = false; onNavigateToChat(serverId, msg.sender) }
                 )
@@ -1450,7 +1433,7 @@ fun MessageBubble(
                     }
                 )
                 DropdownMenuItem(
-                    text = { Text("Whois") },
+                    text = { Text(Localizer.getString("whois", settings.language)) },
                     onClick = { showMenu = false; onAction("/WHOIS ${msg.sender}") }
                 )
                 HorizontalDivider()
@@ -1470,11 +1453,11 @@ fun MessageBubble(
                 )
                 HorizontalDivider()
                 DropdownMenuItem(
-                    text = { Text("Ignore (Definitive)") },
+                    text = { Text(Localizer.getString("ignore", settings.language) + " (Definitive)") },
                     onClick = { showMenu = false; viewModel.ignoreUser(serverId, msg.sender, UserStatus.DEFINITIVE) }
                 )
                 DropdownMenuItem(
-                    text = { Text("Ignore (Temporal)") },
+                    text = { Text(Localizer.getString("ignore", settings.language) + " (Temporal)") },
                     onClick = { showMenu = false; viewModel.ignoreUser(serverId, msg.sender, UserStatus.TEMPORAL) }
                 )
                 if (amIOp) {
@@ -1498,7 +1481,7 @@ fun MessageBubble(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Kick ${msg.sender}", color = MaterialTheme.colorScheme.error) },
+                        text = { Text(Localizer.getString("kick", settings.language) + " ${msg.sender}", color = MaterialTheme.colorScheme.error) },
                         onClick = { showMenu = false; onAction("/KICK ${msg.target} ${msg.sender}") }
                     )
                 }
@@ -1570,6 +1553,7 @@ fun parseIrcColors(text: String, settings: com.personal.ircclient.data.local.ent
                     }
                 }
                 else -> {
+                    // Check for URL at current position
                     val urlMatch = urlRegex.find(text.substring(i))
                     if (urlMatch != null && urlMatch.range.start == 0) {
                         val url = urlMatch.value

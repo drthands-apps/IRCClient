@@ -53,5 +53,10 @@ data class SettingsEntity(
     val defaultBackMessage: String = "I am back.",
     
     // Internationalization
-    val language: String = "en" // en, es, fr, de, pt, zh
+    val language: String = "en", // en, es, fr, de, pt, zh
+    
+    // Radio Settings
+    val isRadioPluginEnabled: Boolean = false,
+    val selectedRadioName: String = "None",
+    val selectedRadioUrl: String = ""
 )

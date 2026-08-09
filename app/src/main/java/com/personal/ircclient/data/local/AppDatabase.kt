@@ -16,7 +16,7 @@ import com.personal.ircclient.data.local.entities.*
         SettingsEntity::class,
         AsciiArtEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
