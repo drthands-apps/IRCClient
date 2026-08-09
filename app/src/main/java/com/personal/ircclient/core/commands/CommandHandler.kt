@@ -5,6 +5,8 @@ import com.personal.ircclient.data.local.entities.UserEntity
 import com.personal.ircclient.data.local.entities.UserStatus
 import com.personal.ircclient.data.repository.IrcRepository
 
+import kotlinx.coroutines.flow.firstOrNull
+
 class CommandHandler(private val engine: IrcEngine, private val repository: IrcRepository? = null) {
 
     suspend fun handleCommand(target: String, input: String): Boolean {
@@ -31,6 +33,7 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
             "NAMES" -> { names(target, params); true }
             "INVITE" -> { invite(params); true }
             "AWAY" -> { away(params); true }
+            "BACK" -> { back(); true }
             "NOTICE" -> { notice(params); true }
             "CTCP" -> { ctcp(params); true }
             "NOTIFY" -> { notify(params); true }
@@ -263,10 +266,19 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
     }
 
     private suspend fun away(message: String) {
-        engine.send("AWAY${if (message.isNotEmpty()) " :$message" else ""}")
+        val settings = repository?.settings?.firstOrNull()
+        val finalMsg = message.ifEmpty { settings?.defaultAwayMessage ?: "I am away" }
+        engine.send("AWAY :$finalMsg")
         if (repository != null) {
-            engine.logSystemMessage("Status", if (message.isEmpty()) "You are no longer marked as away." else "You are now marked as away: $message")
+            engine.logSystemMessage("Status", "You are now marked as away: $finalMsg")
         }
+    }
+
+    private suspend fun back() {
+        val settings = repository?.settings?.firstOrNull()
+        val finalMsg = settings?.defaultBackMessage ?: "I am back"
+        engine.send("AWAY") 
+        engine.logSystemMessage("Status", "You are no longer marked as away. ($finalMsg)")
     }
 
     private suspend fun notice(params: String) {
@@ -275,11 +287,14 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
         if (dest.isNotEmpty() && text.isNotEmpty()) {
             engine.send("NOTICE $dest :$text")
             
+            val isChannel = dest.startsWith("#") || dest.startsWith("&") || dest.startsWith("+") || dest.startsWith("!")
+            val finalTarget = if (isChannel) dest.lowercase() else dest
+
             // Log locally so sender can see it
             repository?.insertMessage(
                 com.personal.ircclient.data.local.entities.MessageEntity(
                     serverId = engine.serverId,
-                    target = dest.lowercase(),
+                    target = finalTarget,
                     sender = "me",
                     text = text,
                     type = com.personal.ircclient.data.local.entities.MessageType.NOTICE

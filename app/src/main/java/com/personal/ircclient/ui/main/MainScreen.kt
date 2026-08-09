@@ -137,70 +137,72 @@ fun MainScreen() {
 
         Scaffold(
             topBar = {
-                val title = when (currentRoute) {
-                    Screen.Servers.route -> "Servers"
-                    Screen.Channels.route -> "Rooms"
-                    Screen.DirectMessages.route -> "Privates"
-                    Screen.Settings.route -> "Settings"
-                    else -> "FenixIRC"
-                }
-                
-                TopAppBar(
-                    title = { Text(title) },
-                    actions = {
-                        when (currentRoute) {
-                            Screen.Channels.route -> {
-                                var showMenu by remember { mutableStateOf(false) }
-                                val activeServers by serversViewModel.activeServerIds.collectAsState()
-                                Box {
-                                    IconButton(onClick = { showMenu = true }) {
-                                        Icon(Icons.Default.AddCircle, contentDescription = "Add Room")
-                                    }
-                                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                                        activeServers.forEach { serverId ->
-                                            val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
-                                            DropdownMenuItem(
-                                                text = { Text("Join Room on $serverName") },
-                                                onClick = { showMenu = false; showJoinChannelDialog = serverId }
-                                            )
+                if (currentRoute != null && !currentRoute.startsWith("chat_detail")) {
+                    val title = when (currentRoute) {
+                        Screen.Servers.route -> "Servers"
+                        Screen.Channels.route -> "Rooms"
+                        Screen.DirectMessages.route -> "Privates"
+                        Screen.Settings.route -> "Settings"
+                        else -> "FenixIRC"
+                    }
+                    
+                    TopAppBar(
+                        title = { Text(title) },
+                        actions = {
+                            when (currentRoute) {
+                                Screen.Channels.route -> {
+                                    var showMenu by remember { mutableStateOf(false) }
+                                    val activeServers by serversViewModel.activeServerIds.collectAsState()
+                                    Box {
+                                        IconButton(onClick = { showMenu = true }) {
+                                            Icon(Icons.Default.AddCircle, contentDescription = "Add Room")
                                         }
-                                        HorizontalDivider()
-                                        activeServers.forEach { serverId ->
-                                            val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
-                                            DropdownMenuItem(
-                                                text = { Text("Discover on $serverName") },
-                                                onClick = { showMenu = false; navController.navigate(Screen.ChannelDiscovery.createRoute(serverId)) }
-                                            )
+                                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                            activeServers.forEach { serverId ->
+                                                val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
+                                                DropdownMenuItem(
+                                                    text = { Text("Join Room on $serverName") },
+                                                    onClick = { showMenu = false; showJoinChannelDialog = serverId }
+                                                )
+                                            }
+                                            HorizontalDivider()
+                                            activeServers.forEach { serverId ->
+                                                val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
+                                                DropdownMenuItem(
+                                                    text = { Text("Discover on $serverName") },
+                                                    onClick = { showMenu = false; navController.navigate(Screen.ChannelDiscovery.createRoute(serverId)) }
+                                                )
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            Screen.DirectMessages.route -> {
-                                var showMenu by remember { mutableStateOf(false) }
-                                val activeServers by serversViewModel.activeServerIds.collectAsState()
-                                Box {
-                                    IconButton(onClick = { showMenu = true }) {
-                                        Icon(Icons.Default.PersonAdd, contentDescription = "New Private")
-                                    }
-                                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                                        DropdownMenuItem(
-                                            text = { Text("Friend List") },
-                                            onClick = { showMenu = false; navController.navigate(Screen.UserLists.route) }
-                                        )
-                                        HorizontalDivider()
-                                        activeServers.forEach { serverId ->
-                                            val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
+                                Screen.DirectMessages.route -> {
+                                    var showMenu by remember { mutableStateOf(false) }
+                                    val activeServers by serversViewModel.activeServerIds.collectAsState()
+                                    Box {
+                                        IconButton(onClick = { showMenu = true }) {
+                                            Icon(Icons.Default.PersonAdd, contentDescription = "New Private")
+                                        }
+                                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                                             DropdownMenuItem(
-                                                text = { Text("Search User on $serverName") },
-                                                onClick = { showMenu = false; showNewPrivateDialog = serverId }
+                                                text = { Text("Friend List") },
+                                                onClick = { showMenu = false; navController.navigate(Screen.UserLists.route) }
                                             )
+                                            HorizontalDivider()
+                                            activeServers.forEach { serverId ->
+                                                val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
+                                                DropdownMenuItem(
+                                                    text = { Text("Search User on $serverName") },
+                                                    onClick = { showMenu = false; showNewPrivateDialog = serverId }
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
-                )
+                    )
+                }
             },
             bottomBar = {
                 NavigationBar {

@@ -48,5 +48,7 @@ data class SettingsEntity(
     
     // Privacy Extra
     val allowPrivateOnlyFromFriends: Boolean = false,
-    val autoResponseForBlockedPv: String = "I only accept private messages from friends."
+    val autoResponseForBlockedPv: String = "I only accept private messages from friends.",
+    val defaultAwayMessage: String = "I am away from my keyboard.",
+    val defaultBackMessage: String = "I am back."
 )

@@ -34,11 +34,6 @@ class IrcEngine(
     private var banMode = EventDisplayMode.ROOM
     
     var showEventsInRoom: Boolean = true
-        set(value) {
-            field = value
-            val mode = if (value) EventDisplayMode.ROOM else EventDisplayMode.STATUS
-            updateEventSettings(mode, mode, mode, mode, mode, mode)
-        }
 
     fun updateEventSettings(
         join: EventDisplayMode,
@@ -215,8 +210,8 @@ class IrcEngine(
 
     private suspend fun logEvent(channel: String?, text: String, mode: EventDisplayMode, type: MessageType) {
         if (mode == EventDisplayMode.IGNORE) return
-        
-        // Final check: if mode is STATUS, target must be Status regardless of channel
+        if (!showEventsInRoom) return
+
         val target = if (mode == EventDisplayMode.ROOM && channel != null) {
             normalizeTarget(channel)
         } else "Status"
@@ -258,6 +253,12 @@ class IrcEngine(
                     val rawMessage = IrcMessage.parse(line) ?: continue
                     val message = sniffer.onIncomingMessage(rawMessage) ?: continue
                     
+                    // Filter out channel list from sharing to Status/UI flow
+                    if (message.command == "322" || message.command == "321" || message.command == "323") {
+                        handleProtocol(message)
+                        continue
+                    }
+
                     handleProtocol(message)
                     saveMessageIfNecessary(message)
                     _messages.emit(message)
@@ -435,8 +436,7 @@ class IrcEngine(
                 current[channelName] = (existing + sender).distinct()
                 _channelUsers.value = current
 
-                val settings = repository?.settings?.firstOrNull()
-                if (joinMode != EventDisplayMode.IGNORE && settings?.showEventsInRoom == true) {
+                if (joinMode != EventDisplayMode.IGNORE) {
                     logEvent(channelRaw, "$sender joined $channelRaw", joinMode, MessageType.JOIN)
                 }
 
@@ -466,8 +466,7 @@ class IrcEngine(
                 current[channelName] = (current[channelName] ?: emptyList()) - sender
                 _channelUsers.value = current
 
-                val settings = repository?.settings?.firstOrNull()
-                if (partMode != EventDisplayMode.IGNORE && settings?.showEventsInRoom == true) {
+                if (partMode != EventDisplayMode.IGNORE) {
                     logEvent(channelRaw, "$sender left $channelRaw", partMode, MessageType.PART)
                 }
 
@@ -497,11 +496,10 @@ class IrcEngine(
                 val sender = message.prefix?.substringBefore("!") ?: ""
                 val reason = message.parameters.firstOrNull() ?: ""
                 val current = _channelUsers.value.toMutableMap()
-                val settings = repository?.settings?.firstOrNull()
                 for (entry in current) {
                     if (entry.value.contains(sender)) {
                         current[entry.key] = entry.value - sender
-                        if (quitMode != EventDisplayMode.IGNORE && settings?.showEventsInRoom == true) {
+                        if (quitMode != EventDisplayMode.IGNORE) {
                             logEvent(entry.key, "$sender quit ($reason)", quitMode, MessageType.QUIT)
                         }
                     }
@@ -520,8 +518,7 @@ class IrcEngine(
                 for (entry in current) {
                     if (entry.value.contains(oldNick)) {
                         current[entry.key] = (entry.value - oldNick) + newNick
-                        val settings = repository?.settings?.firstOrNull()
-                        if (nickChangeMode != EventDisplayMode.IGNORE && settings?.showEventsInRoom == true) {
+                        if (nickChangeMode != EventDisplayMode.IGNORE) {
                             logEvent(entry.key, "$oldNick is now known as $newNick", nickChangeMode, MessageType.NICK)
                         }
                     }
@@ -533,6 +530,12 @@ class IrcEngine(
                 val mode = message.parameters.getOrNull(1) ?: ""
                 val target = message.parameters.getOrNull(2) ?: ""
                 
+                // If it's a user mode change (like +i or +z), log to Status
+                if (channel == currentNickname) {
+                    logSystemMessage("Status", "Mode changed: $mode $target")
+                    return
+                }
+
                 if (mode == "+b" && target.contains(currentNickname)) {
                     logEvent(channel, "You have been BANNED from $channel", EventDisplayMode.ROOM, MessageType.BAN)
                     updateChannelStatus(channel, joined = false, banned = true)
@@ -544,13 +547,11 @@ class IrcEngine(
                         }
                     }
                 } else if (mode.contains("b")) {
-                    val settings = repository?.settings?.firstOrNull()
-                    if (banMode != EventDisplayMode.IGNORE && settings?.showEventsInRoom == true) {
+                    if (banMode != EventDisplayMode.IGNORE) {
                         logEvent(channel, "Mode change: $mode $target", banMode, MessageType.BAN)
                     }
                 } else {
-                    val settings = repository?.settings?.firstOrNull()
-                    if (kickMode != EventDisplayMode.IGNORE && settings?.showEventsInRoom == true) {
+                    if (kickMode != EventDisplayMode.IGNORE) {
                         logEvent(channel, "Mode change: $mode $target", kickMode, MessageType.KICK)
                     }
                 }
@@ -601,11 +602,17 @@ class IrcEngine(
                 val text = message.parameters.getOrNull(1) ?: ""
                 val sender = message.prefix?.substringBefore("!") ?: "system"
                 
-                val finalTarget = if (rawTarget.equals(currentNickname, ignoreCase = true)) {
+                // Route server notices to Status, but user notices to their destination
+                val isServerNotice = sender.contains(".") || sender == "system" || sender == "Auth" || sender == "*"
+                val finalTarget = if (isServerNotice) {
+                    "Status"
+                } else if (rawTarget.equals(currentNickname, ignoreCase = true)) {
                     sender
                 } else {
                     normalizeTarget(rawTarget)
                 }
+
+                incrementUnreadCount(finalTarget)
 
                 repository?.insertMessage(
                     MessageEntity(
@@ -743,32 +750,13 @@ class IrcEngine(
                     )
                 )
             }
-            "NOTICE" -> {
-                val target = message.parameters.getOrNull(0) ?: "Status"
-                val text = message.parameters.getOrNull(1) ?: ""
-                val sender = message.prefix?.substringBefore("!") ?: "System"
-                
-                val finalTarget = if (target == currentNickname || target == "*") "Status" else normalizeTarget(target)
-
-                repository.insertMessage(
-                    MessageEntity(
-                        serverId = serverId,
-                        target = finalTarget,
-                        sender = sender,
-                        text = "NOTICE: $text",
-                        isSystemMessage = true,
-                        type = MessageType.TEXT,
-                        isModifiedByScript = message.isModifiedByScript
-                    )
-                )
-            }
             else -> {
                 if (message.command.all { it.isDigit() }) {
                     val text = message.parameters.drop(1).joinToString(" ")
                     val targetNick = message.parameters.getOrNull(1)
                     
                     val finalTarget = when (message.command) {
-                        "311", "312", "317", "318", "319", "301" -> targetNick ?: "Status"
+                        "311", "312", "317", "318", "319", "301" -> if (targetNick != null) "WHOIS $targetNick" else "Status"
                         else -> "Status"
                     }
                     

@@ -57,6 +57,30 @@ class IrcManager(private val context: Context, private val repository: IrcReposi
         connections.values.forEach { it.showEventsInRoom = enabled }
     }
 
+    private var joinMode = com.personal.ircclient.data.local.entities.EventDisplayMode.ROOM
+    private var partMode = com.personal.ircclient.data.local.entities.EventDisplayMode.ROOM
+    private var quitMode = com.personal.ircclient.data.local.entities.EventDisplayMode.ROOM
+    private var nickMode = com.personal.ircclient.data.local.entities.EventDisplayMode.ROOM
+    private var kickMode = com.personal.ircclient.data.local.entities.EventDisplayMode.ROOM
+    private var banMode = com.personal.ircclient.data.local.entities.EventDisplayMode.ROOM
+
+    fun setEventModes(
+        join: com.personal.ircclient.data.local.entities.EventDisplayMode,
+        part: com.personal.ircclient.data.local.entities.EventDisplayMode,
+        quit: com.personal.ircclient.data.local.entities.EventDisplayMode,
+        nick: com.personal.ircclient.data.local.entities.EventDisplayMode,
+        kick: com.personal.ircclient.data.local.entities.EventDisplayMode,
+        ban: com.personal.ircclient.data.local.entities.EventDisplayMode
+    ) {
+        joinMode = join
+        partMode = part
+        quitMode = quit
+        nickMode = nick
+        kickMode = kick
+        banMode = ban
+        connections.values.forEach { it.updateEventSettings(join, part, quit, nick, kick, ban) }
+    }
+
     fun connect(serverId: Long, config: IrcConfig): IrcEngine {
         val existing = connections[serverId]
         if (existing != null) {
@@ -66,6 +90,7 @@ class IrcManager(private val context: Context, private val repository: IrcReposi
         
         val engine = IrcEngine(context, serverId, config, repository)
         engine.showEventsInRoom = showEventsInRoom
+        engine.updateEventSettings(joinMode, partMode, quitMode, nickMode, kickMode, banMode)
         connections[serverId] = engine
         
         scope.launch {

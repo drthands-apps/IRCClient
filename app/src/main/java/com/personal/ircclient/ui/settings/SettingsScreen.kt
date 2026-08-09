@@ -77,14 +77,8 @@ fun SettingsScreen(
                 .weight(1f)
                 .fillMaxHeight()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            Text(
-                text = selectedCategory,
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
-
             when (selectedCategory) {
                 "Appearance" -> AppearanceSettings(settings, viewModel) { showColorPickerBy = it }
                 "Security & Privacy" -> SecuritySettings(settings, viewModel, onNavigateToUserLists)
@@ -156,9 +150,13 @@ fun SecuritySettings(
         }
 
         if (settings.allowPrivateOnlyFromFriends) {
+            var autoMsg by remember { mutableStateOf(settings.autoResponseForBlockedPv) }
             OutlinedTextField(
-                value = settings.autoResponseForBlockedPv,
-                onValueChange = { viewModel.updateSettings(settings.copy(autoResponseForBlockedPv = it)) },
+                value = autoMsg,
+                onValueChange = { 
+                    autoMsg = it
+                    viewModel.updateSettings(settings.copy(autoResponseForBlockedPv = it)) 
+                },
                 label = { Text("Auto-response Message") },
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
             )
@@ -173,9 +171,38 @@ fun SecuritySettings(
             viewModel.updateSettings(settings.copy(autoLoadImages = it))
         }
 
+        Spacer(Modifier.height(16.dp))
+        Text("Away Messages", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        
+        var awayMsg by remember { mutableStateOf(settings.defaultAwayMessage) }
         OutlinedTextField(
-            value = settings.customUserAgent,
-            onValueChange = { viewModel.updateSettings(settings.copy(customUserAgent = it)) },
+            value = awayMsg,
+            onValueChange = { 
+                awayMsg = it
+                viewModel.updateSettings(settings.copy(defaultAwayMessage = it)) 
+            },
+            label = { Text("Default Away Message (/AWAY)") },
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+        )
+        
+        var backMsg by remember { mutableStateOf(settings.defaultBackMessage) }
+        OutlinedTextField(
+            value = backMsg,
+            onValueChange = { 
+                backMsg = it
+                viewModel.updateSettings(settings.copy(defaultBackMessage = it)) 
+            },
+            label = { Text("Default Back Message (/BACK)") },
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+        )
+
+        var userAgent by remember { mutableStateOf(settings.customUserAgent) }
+        OutlinedTextField(
+            value = userAgent,
+            onValueChange = { 
+                userAgent = it
+                viewModel.updateSettings(settings.copy(customUserAgent = it)) 
+            },
             label = { Text("UserAgent / RealName") },
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
         )
@@ -200,12 +227,18 @@ fun AudioSettings(
         Spacer(Modifier.height(16.dp))
         Text("Events Display", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         
-        EventSettingItem("Joins", viewModel.joinDisplayMode == EventDisplayMode.ROOM) { viewModel.setJoinDisplayEnabled(it) }
-        EventSettingItem("Parts", viewModel.partDisplayMode == EventDisplayMode.ROOM) { viewModel.setPartDisplayEnabled(it) }
-        EventSettingItem("Quits", viewModel.quitDisplayMode == EventDisplayMode.ROOM) { viewModel.setQuitDisplayEnabled(it) }
-        EventSettingItem("Nicks", viewModel.nickChangeDisplayMode == EventDisplayMode.ROOM) { viewModel.setNickChangeDisplayEnabled(it) }
-        EventSettingItem("Kicks", viewModel.kickDisplayMode == EventDisplayMode.ROOM) { viewModel.setKickDisplayEnabled(it) }
-        EventSettingItem("Bans", viewModel.banDisplayMode == EventDisplayMode.ROOM) { viewModel.setBanDisplayEnabled(it) }
+        SecurityToggleItem("Show Events in Room", "Global visibility for system events", viewModel.showEventsInRoom) {
+            viewModel.setShowEventsInRoomEnabled(it)
+        }
+        
+        if (viewModel.showEventsInRoom) {
+            EventSettingItem("Joins", viewModel.joinDisplayMode == EventDisplayMode.ROOM) { viewModel.setJoinDisplayEnabled(it) }
+            EventSettingItem("Parts", viewModel.partDisplayMode == EventDisplayMode.ROOM) { viewModel.setPartDisplayEnabled(it) }
+            EventSettingItem("Quits", viewModel.quitDisplayMode == EventDisplayMode.ROOM) { viewModel.setQuitDisplayEnabled(it) }
+            EventSettingItem("Nicks", viewModel.nickChangeDisplayMode == EventDisplayMode.ROOM) { viewModel.setNickChangeDisplayEnabled(it) }
+            EventSettingItem("Kicks", viewModel.kickDisplayMode == EventDisplayMode.ROOM) { viewModel.setKickDisplayEnabled(it) }
+            EventSettingItem("Bans", viewModel.banDisplayMode == EventDisplayMode.ROOM) { viewModel.setBanDisplayEnabled(it) }
+        }
     }
 }
 
@@ -219,9 +252,13 @@ fun ConnectivitySettings(
             viewModel.updateSettings(settings.copy(runInBackground = it))
         }
 
+        var searchEngine by remember { mutableStateOf(settings.defaultSearchEngine) }
         OutlinedTextField(
-            value = settings.defaultSearchEngine,
-            onValueChange = { viewModel.updateSettings(settings.copy(defaultSearchEngine = it)) },
+            value = searchEngine,
+            onValueChange = { 
+                searchEngine = it
+                viewModel.updateSettings(settings.copy(defaultSearchEngine = it)) 
+            },
             label = { Text("Search Engine URL") },
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
         )
@@ -232,8 +269,24 @@ fun ConnectivitySettings(
         }
         
         if (settings.useProxy) {
-            OutlinedTextField(value = settings.proxyHost, onValueChange = { viewModel.updateSettings(settings.copy(proxyHost = it)) }, label = { Text("Host") })
-            OutlinedTextField(value = settings.proxyPort.toString(), onValueChange = { viewModel.updateSettings(settings.copy(proxyPort = it.toIntOrNull() ?: 1080)) }, label = { Text("Port") })
+            var pHost by remember { mutableStateOf(settings.proxyHost) }
+            OutlinedTextField(
+                value = pHost, 
+                onValueChange = { 
+                    pHost = it
+                    viewModel.updateSettings(settings.copy(proxyHost = it)) 
+                }, 
+                label = { Text("Host") }
+            )
+            var pPort by remember { mutableStateOf(settings.proxyPort.toString()) }
+            OutlinedTextField(
+                value = pPort, 
+                onValueChange = { 
+                    pPort = it
+                    viewModel.updateSettings(settings.copy(proxyPort = it.toIntOrNull() ?: 1080)) 
+                }, 
+                label = { Text("Port") }
+            )
         }
     }
 }

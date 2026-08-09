@@ -87,17 +87,14 @@ class ChatsViewModel(
     }
 
     private fun updateEngineSettings() {
-        ircManager.activeServers.value.forEach { id ->
-            val engine = ircManager.getEngine(id)
-            engine?.updateEventSettings(
-                join = joinDisplayMode,
-                part = partDisplayMode,
-                quit = quitDisplayMode,
-                nick = nickChangeDisplayMode,
-                kick = kickDisplayMode,
-                ban = banDisplayMode
-            )
-        }
+        ircManager.setEventModes(
+            join = joinDisplayMode,
+            part = partDisplayMode,
+            quit = quitDisplayMode,
+            nick = nickChangeDisplayMode,
+            kick = kickDisplayMode,
+            ban = banDisplayMode
+        )
     }
 
     private fun saveSettings() {
@@ -136,6 +133,7 @@ class ChatsViewModel(
 
     fun setShowEventsInRoomEnabled(enabled: Boolean) {
         showEventsInRoom = enabled
+        ircManager.setShowEventsInRoom(enabled)
         saveSettings()
     }
 
@@ -278,9 +276,20 @@ class ChatsViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private var lastUserRefresh = mutableMapOf<String, Long>()
+
     fun getChannelUsersWithInfo(serverId: Long, channelName: String): StateFlow<List<ChannelUserInfo>> {
         val engine = ircManager.getEngine(serverId) ?: return MutableStateFlow(emptyList())
         val normalizedName = normalizeTarget(channelName)
+        
+        val key = "${serverId}_$normalizedName"
+        val now = System.currentTimeMillis()
+        if (now - (lastUserRefresh[key] ?: 0L) > 30000) {
+            viewModelScope.launch {
+                engine.send("NAMES $channelName")
+                lastUserRefresh[key] = now
+            }
+        }
         
         return combine(engine.channelUsers, engine.userPrefixes) { users, prefixes ->
             val nicks = users[normalizedName] ?: emptyList()

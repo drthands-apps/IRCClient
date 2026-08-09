@@ -10,6 +10,7 @@ import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -25,6 +26,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
@@ -326,7 +328,32 @@ fun ChatDetailScreen(
                     )
                 }
 
-                LazyColumn {
+                val listState = rememberLazyListState()
+                LazyColumn(state = listState) {
+                    val alphabet = ('A'..'Z').map { it.toString() }
+                    item {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth().padding(8.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            items(alphabet) { letter ->
+                                Text(
+                                    text = letter,
+                                    modifier = Modifier.clickable {
+                                        scope.launch {
+                                            val index = sortedUsers.indexOfFirst { it.nickname.startsWith(letter, ignoreCase = true) }
+                                            if (index != -1) {
+                                                listState.animateScrollToItem(index + 1)
+                                            }
+                                        }
+                                    }.padding(4.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+
                     items(sortedUsers) { userInfo ->
                         val nick = userInfo.nickname
                         var showUserMenu by rememberSaveable { mutableStateOf(false) }
@@ -465,13 +492,15 @@ fun ChatDetailScreen(
                                 }
                             }
                             currentTargetInfo?.topic?.let { topic ->
-                                Text(
-                                    text = if (settings.enableIrcColors) parseIrcColors(topic) else AnnotatedString(stripIrcColors(topic)),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.outline,
-                                    maxLines = 1,
-                                    modifier = Modifier.basicMarquee()
-                                )
+                                if (!isStatus) {
+                                    Text(
+                                        text = if (settings.enableIrcColors) parseIrcColors(topic) else AnnotatedString(stripIrcColors(topic)),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline,
+                                        maxLines = 1,
+                                        modifier = Modifier.basicMarquee()
+                                    )
+                                }
                             }
                         }
                     },
@@ -481,102 +510,104 @@ fun ChatDetailScreen(
                         }
                     },
                     actions = {
-                        if (isChannel) {
-                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                Icon(Icons.Default.People, contentDescription = "Users")
+                        if (!isStatus) {
+                            if (isChannel) {
+                                IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                    Icon(Icons.Default.People, contentDescription = "Users")
+                                }
                             }
-                        }
-                        if (isUser && user?.encryptionKey == null) {
-                            IconButton(onClick = { viewModel.initiateSecureChat(serverId, target) }) {
-                                Icon(Icons.Default.LockOpen, contentDescription = "Start Secure Chat")
+                            if (isUser && user?.encryptionKey == null) {
+                                IconButton(onClick = { viewModel.initiateSecureChat(serverId, target) }) {
+                                    Icon(Icons.Default.LockOpen, contentDescription = "Start Secure Chat")
+                                }
                             }
-                        }
-                        
-                        var showMoreActions by remember { mutableStateOf(false) }
-                        Box {
-                            IconButton(onClick = { showMoreActions = true }) {
-                                Icon(Icons.Default.MoreVert, contentDescription = "More Actions")
-                            }
-                            DropdownMenu(expanded = showMoreActions, onDismissRequest = { showMoreActions = false }) {
-                                DropdownMenuItem(
-                                    text = { 
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("Save Log")
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Checkbox(
-                                                checked = currentTargetInfo?.saveLog ?: false,
-                                                onCheckedChange = { 
-                                                    viewModel.setSaveLog(serverId, target, it)
-                                                }
-                                            )
-                                        }
-                                    },
-                                    onClick = { viewModel.setSaveLog(serverId, target, !(currentTargetInfo?.saveLog ?: false)) }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Search YouTube") },
-                                    leadingIcon = { Icon(Icons.Default.MusicNote, null) },
-                                    onClick = { 
-                                        showMoreActions = false
-                                        showYoutubeSearch = true 
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Quick Search") },
-                                    leadingIcon = { Icon(Icons.Default.Search, null) },
-                                    onClick = { 
-                                        showMoreActions = false
-                                        showQuickSearch = true
-                                    }
-                                )
-                                HorizontalDivider()
-                                
-                                val availableCommands = viewModel.getAvailableCommands(serverId, target, amIOp)
-                                availableCommands.forEach { cmd ->
+                            
+                            var showMoreActions by remember { mutableStateOf(false) }
+                            Box {
+                                IconButton(onClick = { showMoreActions = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "More Actions")
+                                }
+                                DropdownMenu(expanded = showMoreActions, onDismissRequest = { showMoreActions = false }) {
                                     DropdownMenuItem(
                                         text = { 
-                                            Text(
-                                                text = when(cmd) {
-                                                    "JOIN" -> "Join Channel"
-                                                    "PART" -> "Leave Channel"
-                                                    "QUIT" -> "Disconnect"
-                                                    "NICK" -> "Change Nickname"
-                                                    "TOPIC" -> "Set Topic"
-                                                    "LIST" -> "List Channels"
-                                                    "WHOIS" -> "Whois"
-                                                    "KICK" -> "Kick User"
-                                                    "BAN" -> "Ban Mask"
-                                                    "KICKBAN" -> "Kick & Ban"
-                                                    "OP" -> "Give Op"
-                                                    "DEOP" -> "Take Op"
-                                                    "VOICE" -> "Give Voice"
-                                                    "DEVOICE" -> "Take Voice"
-                                                    "MODE" -> "Channel Modes"
-                                                    "CLEAR" -> "Clear Chat"
-                                                    "ME" -> "Action (/me)"
-                                                    "NAMES" -> "List Users"
-                                                    "INVITE" -> "Invite User"
-                                                    "AWAY" -> "Set Away"
-                                                    "IGNORE" -> "Ignore User"
-                                                    else -> cmd
-                                                },
-                                                color = if (cmd == "PART" || cmd == "QUIT") MaterialTheme.colorScheme.error else Color.Unspecified
-                                            )
-                                        },
-                                        onClick = { 
-                                            showMoreActions = false
-                                            if (cmd == "LIST") onNavigateToDiscovery(serverId)
-                                            else if (cmd == "CLEAR") showClearConfirm = true
-                                            else if (cmd == "PART" || cmd == "QUIT") handleSend("/$cmd")
-                                            else {
-                                                val commandString = "/$cmd "
-                                                textFieldValue = TextFieldValue(
-                                                    text = commandString,
-                                                    selection = TextRange(commandString.length)
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text("Save Log")
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Checkbox(
+                                                    checked = currentTargetInfo?.saveLog ?: false,
+                                                    onCheckedChange = { 
+                                                        viewModel.setSaveLog(serverId, target, it)
+                                                    }
                                                 )
                                             }
+                                        },
+                                        onClick = { viewModel.setSaveLog(serverId, target, !(currentTargetInfo?.saveLog ?: false)) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Search YouTube") },
+                                        leadingIcon = { Icon(Icons.Default.MusicNote, null) },
+                                        onClick = { 
+                                            showMoreActions = false
+                                            showYoutubeSearch = true 
                                         }
                                     )
+                                    DropdownMenuItem(
+                                        text = { Text("Quick Search") },
+                                        leadingIcon = { Icon(Icons.Default.Search, null) },
+                                        onClick = { 
+                                            showMoreActions = false
+                                            showQuickSearch = true
+                                        }
+                                    )
+                                    HorizontalDivider()
+                                    
+                                    val availableCommands = viewModel.getAvailableCommands(serverId, target, amIOp)
+                                    availableCommands.forEach { cmd ->
+                                        DropdownMenuItem(
+                                            text = { 
+                                                Text(
+                                                    text = when(cmd) {
+                                                        "JOIN" -> "Join Channel"
+                                                        "PART" -> "Leave Channel"
+                                                        "QUIT" -> "Disconnect"
+                                                        "NICK" -> "Change Nickname"
+                                                        "TOPIC" -> "Set Topic"
+                                                        "LIST" -> "List Channels"
+                                                        "WHOIS" -> "Whois"
+                                                        "KICK" -> "Kick User"
+                                                        "BAN" -> "Ban Mask"
+                                                        "KICKBAN" -> "Kick & Ban"
+                                                        "OP" -> "Give Op"
+                                                        "DEOP" -> "Take Op"
+                                                        "VOICE" -> "Give Voice"
+                                                        "DEVOICE" -> "Take Voice"
+                                                        "MODE" -> "Channel Modes"
+                                                        "CLEAR" -> "Clear Chat"
+                                                        "ME" -> "Action (/me)"
+                                                        "NAMES" -> "List Users"
+                                                        "INVITE" -> "Invite User"
+                                                        "AWAY" -> "Set Away"
+                                                        "IGNORE" -> "Ignore User"
+                                                        else -> cmd
+                                                    },
+                                                    color = if (cmd == "PART" || cmd == "QUIT") MaterialTheme.colorScheme.error else Color.Unspecified
+                                                )
+                                            },
+                                            onClick = { 
+                                                showMoreActions = false
+                                                if (cmd == "LIST") onNavigateToDiscovery(serverId)
+                                                else if (cmd == "CLEAR") showClearConfirm = true
+                                                else if (cmd == "PART" || cmd == "QUIT") handleSend("/$cmd")
+                                                else {
+                                                    val commandString = "/$cmd "
+                                                    textFieldValue = TextFieldValue(
+                                                        text = commandString,
+                                                        selection = TextRange(commandString.length)
+                                                    )
+                                                }
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -664,12 +695,14 @@ fun ChatDetailScreen(
                             .padding(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = { showFormattingTools = !showFormattingTools }) {
-                            Icon(
-                                Icons.Default.FormatColorText, 
-                                contentDescription = "Formatting",
-                                tint = if (showFormattingTools) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                            )
+                        if (!isStatus) {
+                            IconButton(onClick = { showFormattingTools = !showFormattingTools }) {
+                                Icon(
+                                    Icons.Default.FormatColorText, 
+                                    contentDescription = "Formatting",
+                                    tint = if (showFormattingTools) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
                         var showNickSuggestions by remember { mutableStateOf(false) }
                         val suggestions = remember(textFieldValue.text, channelUsers) {
@@ -1050,23 +1083,53 @@ fun MessageBubble(
                     
                     val currentContext = contextAndroid 
                     
-                    ClickableText(
-                        text = messageText,
-                        style = LocalTextStyle.current.copy(
-                            fontFamily = if (isStatus) FontFamily.Monospace else FontFamily.Default,
-                            fontSize = if (isStatus) 10.sp else 14.sp,
-                            lineHeight = if (isStatus) 12.sp else 20.sp,
-                            textAlign = if (isSystem) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
-                            color = MaterialTheme.colorScheme.onSurface
-                        ),
-                        modifier = if (isSystem) Modifier.fillMaxWidth() else Modifier,
-                        onClick = { offset ->
-                            messageText.getStringAnnotations(tag = "URL", start = offset, end = offset)
-                                .firstOrNull()?.let { annotation ->
-                                    LinkHandler.openLink(currentContext, annotation.item, settings)
+                    val isMOTD = msg.text.contains("MOTD", ignoreCase = true) || isStatus
+                    val lines = msg.text.split("\n")
+                    val isDrawing = lines.size > 3 || (isMOTD && lines.any { it.contains("  ") })
+                    
+                    if (isDrawing) {
+                        Surface(
+                            color = Color.Black.copy(alpha = 0.05f),
+                            shape = MaterialTheme.shapes.small,
+                            modifier = Modifier.padding(top = 4.dp).fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(4.dp)) {
+                                lines.forEach { line ->
+                                    Text(
+                                        text = stripIrcColors(line),
+                                        style = TextStyle(
+                                            fontSize = 5.sp,
+                                            lineHeight = 6.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                        ),
+                                        modifier = Modifier.fillMaxWidth(),
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Clip
+                                    )
                                 }
+                            }
                         }
-                    )
+                    } else {
+                        ClickableText(
+                            text = messageText,
+                            style = LocalTextStyle.current.copy(
+                                fontFamily = if (isStatus) FontFamily.Monospace else FontFamily.Default,
+                                fontSize = if (isStatus) 10.sp else 14.sp,
+                                lineHeight = if (isStatus) 12.sp else 20.sp,
+                                textAlign = if (isSystem) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            modifier = if (isSystem) Modifier.fillMaxWidth() else Modifier,
+                            onClick = { offset ->
+                                messageText.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                                    .firstOrNull()?.let { annotation ->
+                                        LinkHandler.openLink(currentContext, annotation.item, settings)
+                                    }
+                            }
+                        )
+                    }
                     
                     if (settings.showLinkPreviews) {
                         // Image Preview
