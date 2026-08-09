@@ -136,6 +136,72 @@ fun MainScreen() {
         }
 
         Scaffold(
+            topBar = {
+                val title = when (currentRoute) {
+                    Screen.Servers.route -> "Servers"
+                    Screen.Channels.route -> "Rooms"
+                    Screen.DirectMessages.route -> "Privates"
+                    Screen.Settings.route -> "Settings"
+                    else -> "FenixIRC"
+                }
+                
+                TopAppBar(
+                    title = { Text(title) },
+                    actions = {
+                        when (currentRoute) {
+                            Screen.Channels.route -> {
+                                var showMenu by remember { mutableStateOf(false) }
+                                val activeServers by serversViewModel.activeServerIds.collectAsState()
+                                Box {
+                                    IconButton(onClick = { showMenu = true }) {
+                                        Icon(Icons.Default.AddCircle, contentDescription = "Add Room")
+                                    }
+                                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                        activeServers.forEach { serverId ->
+                                            val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
+                                            DropdownMenuItem(
+                                                text = { Text("Join Room on $serverName") },
+                                                onClick = { showMenu = false; showJoinChannelDialog = serverId }
+                                            )
+                                        }
+                                        HorizontalDivider()
+                                        activeServers.forEach { serverId ->
+                                            val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
+                                            DropdownMenuItem(
+                                                text = { Text("Discover on $serverName") },
+                                                onClick = { showMenu = false; navController.navigate(Screen.ChannelDiscovery.createRoute(serverId)) }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            Screen.DirectMessages.route -> {
+                                var showMenu by remember { mutableStateOf(false) }
+                                val activeServers by serversViewModel.activeServerIds.collectAsState()
+                                Box {
+                                    IconButton(onClick = { showMenu = true }) {
+                                        Icon(Icons.Default.PersonAdd, contentDescription = "New Private")
+                                    }
+                                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                        DropdownMenuItem(
+                                            text = { Text("Friend List") },
+                                            onClick = { showMenu = false; navController.navigate(Screen.UserLists.route) }
+                                        )
+                                        HorizontalDivider()
+                                        activeServers.forEach { serverId ->
+                                            val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
+                                            DropdownMenuItem(
+                                                text = { Text("Search User on $serverName") },
+                                                onClick = { showMenu = false; showNewPrivateDialog = serverId }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                )
+            },
             bottomBar = {
                 NavigationBar {
                     items.forEach { screen ->
@@ -216,71 +282,8 @@ fun MainScreen() {
                             }
                         }
                     }
-                    Screen.Channels.route -> {
-                        var showMenu by remember { mutableStateOf(false) }
-                        val activeServers by serversViewModel.activeServerIds.collectAsState()
-                        
-                        Box {
-                            FloatingActionButton(onClick = { showMenu = true }) {
-                                Icon(Icons.Default.ChatBubble, contentDescription = "Room Actions")
-                            }
-                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                                if (activeServers.isEmpty()) {
-                                    DropdownMenuItem(text = { Text("No servers connected") }, onClick = { showMenu = false })
-                                }
-                                activeServers.forEach { serverId ->
-                                    val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
-                                    DropdownMenuItem(
-                                        text = { Text("Join Room on $serverName") },
-                                        leadingIcon = { Icon(Icons.Default.Add, null) },
-                                        onClick = { 
-                                            showMenu = false
-                                            showJoinChannelDialog = serverId
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("List Rooms on $serverName") },
-                                        leadingIcon = { Icon(Icons.Default.Search, null) },
-                                        onClick = { 
-                                            showMenu = false
-                                            navController.navigate(Screen.ChannelDiscovery.createRoute(serverId))
-                                        }
-                                    )
-                                    HorizontalDivider()
-                                }
-                            }
-                        }
-                    }
-                    Screen.DirectMessages.route -> {
-                        var showMenu by remember { mutableStateOf(false) }
-                        val activeServers by serversViewModel.activeServerIds.collectAsState()
-                        Box {
-                            FloatingActionButton(onClick = { showMenu = true }) {
-                                Icon(Icons.Default.Person, contentDescription = "Private Chat Actions")
-                            }
-                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                                DropdownMenuItem(
-                                    text = { Text("Friend List") },
-                                    leadingIcon = { Icon(Icons.Default.People, null) },
-                                    onClick = { 
-                                        showMenu = false
-                                        navController.navigate(Screen.UserLists.route)
-                                    }
-                                )
-                                HorizontalDivider()
-                                activeServers.forEach { serverId ->
-                                    val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
-                                    DropdownMenuItem(
-                                        text = { Text("Search User on $serverName") },
-                                        leadingIcon = { Icon(Icons.Default.PersonSearch, null) },
-                                        onClick = { 
-                                            showMenu = false
-                                            showNewPrivateDialog = serverId
-                                        }
-                                    )
-                                }
-                            }
-                        }
+                    Screen.Channels.route, Screen.DirectMessages.route -> {
+                        // Moved to TopAppBar
                     }
                 }
             }

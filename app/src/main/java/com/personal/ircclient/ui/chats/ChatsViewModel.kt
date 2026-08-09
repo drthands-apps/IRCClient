@@ -136,7 +136,7 @@ class ChatsViewModel(
 
     fun setShowEventsInRoomEnabled(enabled: Boolean) {
         showEventsInRoom = enabled
-        val mode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        val mode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.IGNORE
         joinDisplayMode = mode
         partDisplayMode = mode
         quitDisplayMode = mode
@@ -148,37 +148,37 @@ class ChatsViewModel(
     }
 
     fun setJoinDisplayEnabled(enabled: Boolean) {
-        joinDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        joinDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.IGNORE
         updateEngineSettings()
         saveSettings()
     }
 
     fun setPartDisplayEnabled(enabled: Boolean) {
-        partDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        partDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.IGNORE
         updateEngineSettings()
         saveSettings()
     }
 
     fun setQuitDisplayEnabled(enabled: Boolean) {
-        quitDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        quitDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.IGNORE
         updateEngineSettings()
         saveSettings()
     }
 
     fun setNickChangeDisplayEnabled(enabled: Boolean) {
-        nickChangeDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        nickChangeDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.IGNORE
         updateEngineSettings()
         saveSettings()
     }
 
     fun setKickDisplayEnabled(enabled: Boolean) {
-        kickDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        kickDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.IGNORE
         updateEngineSettings()
         saveSettings()
     }
 
     fun setBanDisplayEnabled(enabled: Boolean) {
-        banDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.STATUS
+        banDisplayMode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.IGNORE
         updateEngineSettings()
         saveSettings()
     }

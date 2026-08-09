@@ -43,6 +43,7 @@ import com.personal.ircclient.core.utils.LinkHandler
 import com.personal.ircclient.core.utils.ImageUtils
 import com.personal.ircclient.core.utils.FileUploader
 import com.personal.ircclient.core.audio.AudioRecorder
+import com.personal.ircclient.core.audio.RadioPlayer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import coil.compose.AsyncImage
@@ -480,6 +481,13 @@ fun ChatDetailScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = { showFormattingTools = !showFormattingTools }) {
+                            Icon(
+                                Icons.Default.FormatColorText, 
+                                contentDescription = "Formatting",
+                                tint = if (showFormattingTools) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                            )
+                        }
                         if (isChannel) {
                             IconButton(onClick = { scope.launch { drawerState.open() } }) {
                                 Icon(Icons.Default.People, contentDescription = "Users")
@@ -490,23 +498,13 @@ fun ChatDetailScreen(
                                 Icon(Icons.Default.LockOpen, contentDescription = "Start Secure Chat")
                             }
                         }
-                    }
-                )
-            },
-            floatingActionButton = {
-                if (!isStatus) {
-                    Column(horizontalAlignment = Alignment.End) {
-                        var showFabMenu by remember { mutableStateOf(false) }
+                        
+                        var showMoreActions by remember { mutableStateOf(false) }
                         Box {
-                            FloatingActionButton(onClick = { showFabMenu = true }) {
-                                Icon(
-                                    imageVector = if (isChannel) Icons.Default.Groups 
-                                                  else Icons.Default.Person, 
-                                    contentDescription = "Menu"
-                                )
+                            IconButton(onClick = { showMoreActions = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "More Actions")
                             }
-                            
-                            DropdownMenu(expanded = showFabMenu, onDismissRequest = { showFabMenu = false }) {
+                            DropdownMenu(expanded = showMoreActions, onDismissRequest = { showMoreActions = false }) {
                                 DropdownMenuItem(
                                     text = { 
                                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -524,15 +522,17 @@ fun ChatDetailScreen(
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Search YouTube") },
+                                    leadingIcon = { Icon(Icons.Default.MusicNote, null) },
                                     onClick = { 
-                                        showFabMenu = false
+                                        showMoreActions = false
                                         showYoutubeSearch = true 
                                     }
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Quick Search") },
+                                    leadingIcon = { Icon(Icons.Default.Search, null) },
                                     onClick = { 
-                                        showFabMenu = false
+                                        showMoreActions = false
                                         showQuickSearch = true
                                     }
                                 )
@@ -571,7 +571,7 @@ fun ChatDetailScreen(
                                             )
                                         },
                                         onClick = { 
-                                            showFabMenu = false
+                                            showMoreActions = false
                                             if (cmd == "LIST") onNavigateToDiscovery(serverId)
                                             else if (cmd == "CLEAR") showClearConfirm = true
                                             else if (cmd == "PART" || cmd == "QUIT") handleSend("/$cmd")
@@ -588,11 +588,10 @@ fun ChatDetailScreen(
                             }
                         }
                     }
-                } else {
-                    FloatingActionButton(onClick = { onNavigateToDiscovery(serverId) }) {
-                        Icon(Icons.Default.Search, contentDescription = "List Channels")
-                    }
-                }
+                )
+            },
+            floatingActionButton = {
+                // Removed FAB as requested, moved to TopAppBar actions
             },
             bottomBar = {
                 Column(
@@ -679,33 +678,75 @@ fun ChatDetailScreen(
                                 tint = if (showFormattingTools) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                             )
                         }
-                        OutlinedTextField(
-                            value = textFieldValue,
-                            onValueChange = { textFieldValue = it },
-                            modifier = Modifier.weight(1f),
-                            placeholder = { Text(if (isStatus) "Enter command (e.g. /HELP)..." else "Type a message...") },
-                            leadingIcon = {
-                                if (!isStatus) {
-                                    Box {
-                                        IconButton(onClick = { showAttachMenu = true }) {
-                                            Icon(Icons.Default.Add, contentDescription = "Attach")
+                        var showNickSuggestions by remember { mutableStateOf(false) }
+                        val suggestions = remember(textFieldValue.text, channelUsers) {
+                            val lastWord = textFieldValue.text.substringBeforeLast(" ", "").let { 
+                                textFieldValue.text.substring(it.length).trim() 
+                            }
+                            if (lastWord.startsWith("@") && lastWord.length > 1) {
+                                val query = lastWord.substring(1).lowercase()
+                                channelUsers.filter { it.nickname.lowercase().contains(query) }.map { it.nickname }
+                            } else emptyList()
+                        }
+
+                        LaunchedEffect(suggestions) {
+                            showNickSuggestions = suggestions.isNotEmpty()
+                        }
+
+                        Box(modifier = Modifier.weight(1f)) {
+                            OutlinedTextField(
+                                value = textFieldValue,
+                                onValueChange = { textFieldValue = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                placeholder = { Text(if (isStatus) "Enter command (e.g. /HELP)..." else "Type a message...") },
+                                leadingIcon = {
+                                    if (!isStatus) {
+                                        Box {
+                                            IconButton(onClick = { showAttachMenu = true }) {
+                                                Icon(Icons.Default.Add, contentDescription = "Attach")
+                                            }
+                                            DropdownMenu(expanded = showAttachMenu, onDismissRequest = { showAttachMenu = false }) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Image") },
+                                                    leadingIcon = { Icon(Icons.Default.Image, null) },
+                                                    onClick = { showAttachMenu = false; imageLauncher.launch("image/*") }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Audio File") },
+                                                    leadingIcon = { Icon(Icons.Default.AudioFile, null) },
+                                                    onClick = { showAttachMenu = false; audioLauncher.launch("audio/*") }
+                                                )
+                                            }
                                         }
-                                        DropdownMenu(expanded = showAttachMenu, onDismissRequest = { showAttachMenu = false }) {
-                                            DropdownMenuItem(
-                                                text = { Text("Image") },
-                                                leadingIcon = { Icon(Icons.Default.Image, null) },
-                                                onClick = { showAttachMenu = false; imageLauncher.launch("image/*") }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text("Audio File") },
-                                                leadingIcon = { Icon(Icons.Default.AudioFile, null) },
-                                                onClick = { showAttachMenu = false; audioLauncher.launch("audio/*") }
+                                    }
+                                }
+                            )
+
+                            if (showNickSuggestions) {
+                                Card(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .offset(y = (-60).dp)
+                                        .fillMaxWidth(),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                                ) {
+                                    LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
+                                        items(suggestions) { nick ->
+                                            ListItem(
+                                                headlineContent = { Text(nick) },
+                                                modifier = Modifier.clickable {
+                                                    val text = textFieldValue.text
+                                                    val lastWordStart = text.lastIndexOf("@")
+                                                    val newText = text.substring(0, lastWordStart) + nick
+                                                    textFieldValue = TextFieldValue(newText + " ", TextRange(newText.length + 1))
+                                                    showNickSuggestions = false
+                                                }
                                             )
                                         }
                                     }
                                 }
                             }
-                        )
+                        }
                         if (!isStatus) {
                             IconButton(onClick = { 
                                 if (isRecording) {
@@ -757,28 +798,50 @@ fun ChatDetailScreen(
                     activeBot?.let { bot ->
                         val (radioName, streamUrl) = radioBots[bot.nickname.lowercase()]!!
                         
-                        Card(
-                            modifier = Modifier.fillMaxWidth().padding(8.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                            Card(
+                                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Radio, contentDescription = null)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Radio $radioName", style = MaterialTheme.typography.titleSmall)
-                                }
-                                Button(onClick = {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(streamUrl))
-                                    contextAndroid.startActivity(intent)
-                                }) {
-                                    Text("Play Stream")
+                                val isPlayingByPlayer by RadioPlayer.isPlaying.collectAsState()
+                                val currentUrlByPlayer by RadioPlayer.currentUrl.collectAsState()
+                                val isCurrentStation = currentUrlByPlayer == streamUrl && isPlayingByPlayer
+
+                                Row(
+                                    modifier = Modifier.padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                        Icon(
+                                            imageVector = if (isCurrentStation) Icons.Default.PauseCircle else Icons.Default.Radio, 
+                                            contentDescription = null,
+                                            tint = if (isCurrentStation) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            text = if (isCurrentStation) "Playing $radioName..." else "Radio $radioName", 
+                                            style = MaterialTheme.typography.titleSmall,
+                                            maxLines = 1
+                                        )
+                                    }
+                                    Row {
+                                        IconButton(onClick = {
+                                            RadioPlayer.play(contextAndroid, streamUrl)
+                                        }) {
+                                            Icon(
+                                                imageVector = if (isCurrentStation) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                                contentDescription = "Toggle Radio"
+                                            )
+                                        }
+                                        IconButton(onClick = {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(streamUrl))
+                                            contextAndroid.startActivity(intent)
+                                        }) {
+                                            Icon(Icons.Default.OpenInNew, contentDescription = "External Player")
+                                        }
+                                    }
                                 }
                             }
-                        }
                     }
                 }
 

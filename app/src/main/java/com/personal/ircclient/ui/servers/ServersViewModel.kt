@@ -6,6 +6,7 @@ import com.personal.ircclient.core.IrcManager
 import com.personal.ircclient.data.local.entities.ChannelEntity
 import com.personal.ircclient.data.local.entities.ServerEntity
 import com.personal.ircclient.data.repository.IrcRepository
+import com.personal.ircclient.core.utils.NickGenerator
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -80,7 +81,7 @@ class ServersViewModel(
 
     fun connectServer(server: ServerEntity) {
         val finalNickname = if (server.generateRandomNick) {
-            "${server.nickname}_${(100..999).random()}"
+            NickGenerator.generate()
         } else server.nickname
 
         val config = com.personal.ircclient.core.model.IrcConfig(

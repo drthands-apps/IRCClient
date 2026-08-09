@@ -274,6 +274,17 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
         val text = params.substringAfter(" ", "")
         if (dest.isNotEmpty() && text.isNotEmpty()) {
             engine.send("NOTICE $dest :$text")
+            
+            // Log locally so sender can see it
+            repository?.insertMessage(
+                com.personal.ircclient.data.local.entities.MessageEntity(
+                    serverId = engine.serverId,
+                    target = dest.lowercase(),
+                    sender = "me",
+                    text = text,
+                    type = com.personal.ircclient.data.local.entities.MessageType.NOTICE
+                )
+            )
         }
     }
 
