@@ -204,6 +204,8 @@ fun AudioSettings(
         EventSettingItem("Parts", viewModel.partDisplayMode == EventDisplayMode.ROOM) { viewModel.setPartDisplayEnabled(it) }
         EventSettingItem("Quits", viewModel.quitDisplayMode == EventDisplayMode.ROOM) { viewModel.setQuitDisplayEnabled(it) }
         EventSettingItem("Nicks", viewModel.nickChangeDisplayMode == EventDisplayMode.ROOM) { viewModel.setNickChangeDisplayEnabled(it) }
+        EventSettingItem("Kicks", viewModel.kickDisplayMode == EventDisplayMode.ROOM) { viewModel.setKickDisplayEnabled(it) }
+        EventSettingItem("Bans", viewModel.banDisplayMode == EventDisplayMode.ROOM) { viewModel.setBanDisplayEnabled(it) }
     }
 }
 

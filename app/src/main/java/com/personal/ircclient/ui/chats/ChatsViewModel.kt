@@ -136,14 +136,6 @@ class ChatsViewModel(
 
     fun setShowEventsInRoomEnabled(enabled: Boolean) {
         showEventsInRoom = enabled
-        val mode = if (enabled) EventDisplayMode.ROOM else EventDisplayMode.IGNORE
-        joinDisplayMode = mode
-        partDisplayMode = mode
-        quitDisplayMode = mode
-        nickChangeDisplayMode = mode
-        kickDisplayMode = mode
-        banDisplayMode = mode
-        updateEngineSettings()
         saveSettings()
     }
 

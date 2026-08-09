@@ -435,7 +435,8 @@ class IrcEngine(
                 current[channelName] = (existing + sender).distinct()
                 _channelUsers.value = current
 
-                if (joinMode != EventDisplayMode.IGNORE) {
+                val settings = repository?.settings?.firstOrNull()
+                if (joinMode != EventDisplayMode.IGNORE && settings?.showEventsInRoom == true) {
                     logEvent(channelRaw, "$sender joined $channelRaw", joinMode, MessageType.JOIN)
                 }
 
@@ -465,7 +466,8 @@ class IrcEngine(
                 current[channelName] = (current[channelName] ?: emptyList()) - sender
                 _channelUsers.value = current
 
-                if (partMode != EventDisplayMode.IGNORE) {
+                val settings = repository?.settings?.firstOrNull()
+                if (partMode != EventDisplayMode.IGNORE && settings?.showEventsInRoom == true) {
                     logEvent(channelRaw, "$sender left $channelRaw", partMode, MessageType.PART)
                 }
 
@@ -495,10 +497,11 @@ class IrcEngine(
                 val sender = message.prefix?.substringBefore("!") ?: ""
                 val reason = message.parameters.firstOrNull() ?: ""
                 val current = _channelUsers.value.toMutableMap()
+                val settings = repository?.settings?.firstOrNull()
                 for (entry in current) {
                     if (entry.value.contains(sender)) {
                         current[entry.key] = entry.value - sender
-                        if (quitMode != EventDisplayMode.IGNORE) {
+                        if (quitMode != EventDisplayMode.IGNORE && settings?.showEventsInRoom == true) {
                             logEvent(entry.key, "$sender quit ($reason)", quitMode, MessageType.QUIT)
                         }
                     }
@@ -517,7 +520,8 @@ class IrcEngine(
                 for (entry in current) {
                     if (entry.value.contains(oldNick)) {
                         current[entry.key] = (entry.value - oldNick) + newNick
-                        if (nickChangeMode != EventDisplayMode.IGNORE) {
+                        val settings = repository?.settings?.firstOrNull()
+                        if (nickChangeMode != EventDisplayMode.IGNORE && settings?.showEventsInRoom == true) {
                             logEvent(entry.key, "$oldNick is now known as $newNick", nickChangeMode, MessageType.NICK)
                         }
                     }
@@ -540,9 +544,15 @@ class IrcEngine(
                         }
                     }
                 } else if (mode.contains("b")) {
-                    logEvent(channel, "Mode change: $mode $target", banMode, MessageType.BAN)
+                    val settings = repository?.settings?.firstOrNull()
+                    if (banMode != EventDisplayMode.IGNORE && settings?.showEventsInRoom == true) {
+                        logEvent(channel, "Mode change: $mode $target", banMode, MessageType.BAN)
+                    }
                 } else {
-                    logEvent(channel, "Mode change: $mode $target", kickMode, MessageType.KICK)
+                    val settings = repository?.settings?.firstOrNull()
+                    if (kickMode != EventDisplayMode.IGNORE && settings?.showEventsInRoom == true) {
+                        logEvent(channel, "Mode change: $mode $target", kickMode, MessageType.KICK)
+                    }
                 }
             }
         }

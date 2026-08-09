@@ -481,13 +481,6 @@ fun ChatDetailScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { showFormattingTools = !showFormattingTools }) {
-                            Icon(
-                                Icons.Default.FormatColorText, 
-                                contentDescription = "Formatting",
-                                tint = if (showFormattingTools) MaterialTheme.colorScheme.primary else LocalContentColor.current
-                            )
-                        }
                         if (isChannel) {
                             IconButton(onClick = { scope.launch { drawerState.open() } }) {
                                 Icon(Icons.Default.People, contentDescription = "Users")
@@ -700,7 +693,7 @@ fun ChatDetailScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 placeholder = { Text(if (isStatus) "Enter command (e.g. /HELP)..." else "Type a message...") },
                                 leadingIcon = {
-                                    if (!isStatus) {
+                                    if (!isStatus && !isChannel) {
                                         Box {
                                             IconButton(onClick = { showAttachMenu = true }) {
                                                 Icon(Icons.Default.Add, contentDescription = "Attach")
@@ -747,7 +740,7 @@ fun ChatDetailScreen(
                                 }
                             }
                         }
-                        if (!isStatus) {
+                        if (!isStatus && !isChannel) {
                             IconButton(onClick = { 
                                 if (isRecording) {
                                     val file = recorder.stopRecording()
@@ -1159,7 +1152,7 @@ fun MessageBubble(
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                             ) {
                                 Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Share, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    Icon(Icons.Default.Share, contentDescription = null, tint = Color.Blue)
                                     Spacer(Modifier.width(8.dp))
                                     Text(
                                         text = "Social Media Link",
