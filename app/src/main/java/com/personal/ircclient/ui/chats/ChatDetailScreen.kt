@@ -387,7 +387,7 @@ fun ChatDetailScreen(
                         }
                     }
 
-                    items(sortedUsers) { userInfo ->
+                    items(sortedUsers, key = { it.nickname }) { userInfo ->
                         val nick = userInfo.nickname
                         var showUserMenu by rememberSaveable { mutableStateOf(false) }
                         val dismissState = rememberSwipeToDismissBoxState()
@@ -415,53 +415,75 @@ fun ChatDetailScreen(
                             enableDismissFromStartToEnd = false
                         ) {
                             Box {
-                                ListItem(
-                                    headlineContent = { 
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            if (userInfo.prefix.isNotEmpty()) {
+                                Surface(
+                                    onClick = { showUserMenu = true },
+                                    color = Color.Transparent,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    ListItem(
+                                        headlineContent = { 
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                if (userInfo.prefix.isNotEmpty()) {
+                                                    Text(
+                                                        text = userInfo.prefix,
+                                                        color = when(userInfo.prefix) {
+                                                            "@", "&", "~" -> MaterialTheme.colorScheme.primary
+                                                            "+" -> MaterialTheme.colorScheme.secondary
+                                                            else -> Color.Unspecified
+                                                        },
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(end = 4.dp)
+                                                    )
+                                                }
                                                 Text(
-                                                    text = userInfo.prefix,
-                                                    color = when(userInfo.prefix) {
-                                                        "@", "&", "~" -> MaterialTheme.colorScheme.primary
-                                                        "+" -> MaterialTheme.colorScheme.secondary
-                                                        else -> Color.Unspecified
+                                                    text = nick,
+                                                    color = if (userInfo.ignoreStatus != UserStatus.NONE) 
+                                                                MaterialTheme.colorScheme.outline 
+                                                            else Color.Unspecified
+                                                )
+                                                if (userInfo.isFriend) {
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Icon(Icons.Default.Star, contentDescription = "Friend", tint = Color(0xFFFFD700), modifier = Modifier.size(14.dp))
+                                                }
+                                            }
+                                        },
+                                        leadingContent = { 
+                                            Box(
+                                                modifier = Modifier.size(24.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = when {
+                                                        userInfo.prefix == "@" || userInfo.prefix == "&" || userInfo.prefix == "~" -> Icons.Default.Shield
+                                                        userInfo.prefix == "+" || userInfo.prefix == "%" -> Icons.Default.VolumeUp
+                                                        userInfo.isFriend -> Icons.Default.Person
+                                                        else -> Icons.Default.PersonOutline
                                                     },
-                                                    fontWeight = FontWeight.Bold,
-                                                    modifier = Modifier.padding(end = 4.dp)
+                                                    contentDescription = null,
+                                                    tint = if (userInfo.ignoreStatus != UserStatus.NONE) 
+                                                                MaterialTheme.colorScheme.outline 
+                                                            else MaterialTheme.colorScheme.primary
                                                 )
                                             }
-                                            Text(
-                                                text = nick,
-                                                color = if (userInfo.ignoreStatus != UserStatus.NONE) 
-                                                            MaterialTheme.colorScheme.outline 
-                                                        else Color.Unspecified
-                                            )
-                                            if (userInfo.isFriend) {
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Icon(Icons.Default.Star, contentDescription = "Friend", tint = Color(0xFFFFD700), modifier = Modifier.size(14.dp))
-                                            }
                                         }
-                                    },
-                                    leadingContent = { 
-                                        Icon(
-                                            imageVector = Icons.Default.Person, 
-                                            contentDescription = null,
-                                            tint = if (userInfo.ignoreStatus != UserStatus.NONE) 
-                                                        MaterialTheme.colorScheme.outline 
-                                                    else MaterialTheme.colorScheme.primary
-                                        ) 
-                                    },
-                                    modifier = Modifier.clickable {
-                                        showUserMenu = true
-                                    }
-                                )
+                                    )
+                                }
                                 
                                 DropdownMenu(
                                     expanded = showUserMenu,
                                     onDismissRequest = { showUserMenu = false }
                                 ) {
+                                    Text(
+                                        text = nick,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    HorizontalDivider()
                                     DropdownMenuItem(
                                         text = { Text("Private Chat") },
+                                        leadingIcon = { Icon(Icons.Default.Message, null) },
                                         onClick = { 
                                             showUserMenu = false
                                             scope.launch { drawerState.close() }
@@ -482,7 +504,17 @@ fun ChatDetailScreen(
                                     HorizontalDivider()
                                     DropdownMenuItem(
                                         text = { Text("Friend User") },
+                                        leadingIcon = { Icon(Icons.Default.Star, null) },
                                         onClick = { showUserMenu = false; viewModel.setFriend(serverId, nick, true) }
+                                    )
+                                    HorizontalDivider()
+                                    DropdownMenuItem(
+                                        text = { Text("Send Art/Phrase") },
+                                        leadingIcon = { Icon(Icons.Default.ArtTrack, null) },
+                                        onClick = { 
+                                            showUserMenu = false
+                                            showAsciiSelector = nick
+                                        }
                                     )
                                     HorizontalDivider()
                                     DropdownMenuItem(
