@@ -3,14 +3,11 @@ package com.personal.ircclient.ui.servers
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,29 +15,37 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
+import com.personal.ircclient.core.utils.Localizer
 import com.personal.ircclient.core.IrcEngine
 import com.personal.ircclient.data.local.entities.ChannelEntity
 import com.personal.ircclient.data.local.entities.ServerEntity
+import com.personal.ircclient.data.repository.IrcRepository
+import com.personal.ircclient.ui.chats.ChatsViewModel
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ServersScreen(
     viewModel: ServersViewModel,
+    chatsViewModel: ChatsViewModel,
     onAddServerClick: () -> Unit,
     onEditServerClick: (Long) -> Unit,
     onChannelClick: (Long, String) -> Unit
 ) {
     val servers by viewModel.servers.collectAsState()
     val statuses by viewModel.connectionStatuses.collectAsState()
+    val settings by chatsViewModel.settingsState.collectAsState()
+    val lang = settings.language
+    val scope = rememberCoroutineScope()
     
     var serverToDelete by remember { mutableStateOf<ServerEntity?>(null) }
 
     if (serverToDelete != null) {
         AlertDialog(
             onDismissRequest = { serverToDelete = null },
-            title = { Text("Delete Server") },
-            text = { Text("Are you sure you want to delete '${serverToDelete?.name}'? This will also disconnect you and clear all history.") },
+            title = { Text(Localizer.getString("delete_server", lang)) },
+            text = { Text(Localizer.getString("delete_server_confirm", lang)) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -48,10 +53,10 @@ fun ServersScreen(
                         serverToDelete = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) { Text("Delete") }
+                ) { Text(Localizer.getString("delete", lang)) }
             },
             dismissButton = {
-                TextButton(onClick = { serverToDelete = null }) { Text("Cancel") }
+                TextButton(onClick = { serverToDelete = null }) { Text(Localizer.getString("cancel", lang)) }
             }
         )
     }
@@ -61,28 +66,36 @@ fun ServersScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        if (servers.isEmpty()) {
+            item {
+                Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(Localizer.getString("no_servers", lang))
+                }
+            }
+        }
         items(servers, key = { it.id }) { server ->
             val connectionStatus = statuses[server.id] ?: IrcEngine.ConnectionStatus.DISCONNECTED
-            val scope = rememberCoroutineScope()
-            var showConfirmDisconnect by remember { mutableStateOf(false) }
-            
             val dismissState = rememberSwipeToDismissBoxState(
                 confirmValueChange = {
                     if (it == SwipeToDismissBoxValue.EndToStart) {
-                        showConfirmDisconnect = true
-                        false
+                        if (connectionStatus != IrcEngine.ConnectionStatus.DISCONNECTED) {
+                            // Show confirmation maybe? For now just disconnect
+                            viewModel.disconnectServer(server.id)
+                        }
+                        true
                     } else false
                 }
             )
 
+            var showConfirmDisconnect by remember { mutableStateOf(false) }
             if (showConfirmDisconnect) {
                 AlertDialog(
                     onDismissRequest = { 
                         showConfirmDisconnect = false
                         scope.launch { dismissState.reset() }
                     },
-                    title = { Text("Disconnect Server") },
-                    text = { Text("Are you sure you want to disconnect from '${server.name}'?") },
+                    title = { Text(Localizer.getString("disconnect", lang)) },
+                    text = { Text("Are you sure you want to disconnect?") },
                     confirmButton = {
                         Button(
                             onClick = {
@@ -91,13 +104,13 @@ fun ServersScreen(
                                 scope.launch { dismissState.reset() }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                        ) { Text("Disconnect") }
+                        ) { Text(Localizer.getString("disconnect", lang)) }
                     },
                     dismissButton = {
                         TextButton(onClick = { 
                             showConfirmDisconnect = false
                             scope.launch { dismissState.reset() }
-                        }) { Text("Cancel") }
+                        }) { Text(Localizer.getString("cancel", lang)) }
                     }
                 )
             }
@@ -119,6 +132,7 @@ fun ServersScreen(
                     server = server,
                     status = connectionStatus,
                     channels = viewModel.getChannels(server.id).collectAsState(initial = emptyList()).value,
+                    lang = lang,
                     onConnect = { viewModel.connectServer(server) },
                     onDisconnect = { viewModel.disconnectServer(server.id) },
                     onEdit = { onEditServerClick(server.id) },
@@ -138,6 +152,7 @@ fun ServerItem(
     server: ServerEntity,
     status: IrcEngine.ConnectionStatus,
     channels: List<ChannelEntity>,
+    lang: String,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onEdit: () -> Unit,
@@ -147,7 +162,6 @@ fun ServerItem(
     onDiscoverClick: () -> Unit
 ) {
     val isActive = status != IrcEngine.ConnectionStatus.DISCONNECTED
-    val isRegistered = status == IrcEngine.ConnectionStatus.REGISTERED
     var expanded by remember { mutableStateOf(false) }
     var showServerMenu by remember { mutableStateOf(false) }
 
@@ -162,20 +176,19 @@ fun ServerItem(
         Column {
             Box {
                 Row(
-                    modifier = Modifier
-                        .padding(12.dp)
-                        .fillMaxWidth(),
+                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                         Text(text = server.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                        Text(text = "${server.host}:${server.port}", style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                        val statusKey = when(status) {
+                            IrcEngine.ConnectionStatus.REGISTERED -> "joined"
+                            IrcEngine.ConnectionStatus.DISCONNECTED -> "disconnected"
+                            else -> status.name.lowercase()
+                        }
                         Text(
-                            text = "${server.host}:${server.port}",
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1
-                        )
-                        Text(
-                            text = status.name,
+                            text = Localizer.getString(statusKey, lang),
                             style = MaterialTheme.typography.labelSmall,
                             color = when(status) {
                                 IrcEngine.ConnectionStatus.REGISTERED -> Color.Green
@@ -187,48 +200,24 @@ fun ServerItem(
                         )
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         IconButton(onClick = if (isActive) onDisconnect else onConnect, modifier = Modifier.size(28.dp)) {
                             Icon(
                                 imageVector = if (isActive) Icons.Default.CloudDone else Icons.Default.CloudOff,
-                                contentDescription = "Connection Status",
+                                contentDescription = null,
                                 modifier = Modifier.size(18.dp),
-                                tint = when(status) {
-                                    IrcEngine.ConnectionStatus.REGISTERED -> Color.Green
-                                    IrcEngine.ConnectionStatus.CONNECTED, IrcEngine.ConnectionStatus.REGISTERING -> Color.Cyan
-                                    IrcEngine.ConnectionStatus.CONNECTING -> Color.Yellow
-                                    IrcEngine.ConnectionStatus.ERROR -> Color.Red
-                                    else -> Color.Gray
-                                }
+                                tint = if (isActive) Color.Green else Color.Gray
                             )
                         }
                         IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
-                            Icon(
-                                Icons.Default.Edit,
-                                contentDescription = "Edit",
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                            Icon(Icons.Default.Edit, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                         }
                         IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Delete",
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.error
-                            )
+                            Icon(Icons.Default.Delete, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
                         }
                         if (isActive) {
                             IconButton(onClick = { onChannelClick("Status") }, modifier = Modifier.size(28.dp)) {
-                                Icon(
-                                    Icons.Default.Terminal,
-                                    contentDescription = "Console",
-                                    modifier = Modifier.size(18.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
+                                Icon(Icons.Default.Terminal, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
@@ -236,7 +225,7 @@ fun ServerItem(
 
                 DropdownMenu(expanded = showServerMenu, onDismissRequest = { showServerMenu = false }) {
                     DropdownMenuItem(
-                        text = { Text("Server Info") },
+                        text = { Text(Localizer.getString("server_info", lang)) },
                         onClick = { showServerMenu = false; onJoinChannel("/VERSION") }
                     )
                     DropdownMenuItem(
@@ -255,12 +244,9 @@ fun ServerItem(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Channels", style = MaterialTheme.typography.titleMedium)
+                        Text(Localizer.getString("nav_rooms", lang), style = MaterialTheme.typography.titleMedium)
                         if (isActive) {
-                            TextButton(onClick = { 
-                                onJoinChannel("/LIST")
-                                onDiscoverClick()
-                            }) {
+                            TextButton(onClick = { onJoinChannel("/LIST"); onDiscoverClick() }) {
                                 Text("List All")
                             }
                         }
@@ -284,71 +270,47 @@ fun ServerItem(
                                     else -> Color.Transparent
                                 }
                                 Box(modifier = Modifier.fillMaxSize().background(color), contentAlignment = Alignment.CenterEnd) {
-                                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Part", tint = Color.White)
+                                    Icon(Icons.Default.Logout, null, tint = Color.White, modifier = Modifier.padding(end = 16.dp))
                                 }
                             },
                             enableDismissFromStartToEnd = false
                         ) {
-                            Box {
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth().combinedClickable(
-                                        onClick = { onChannelClick(channel.name) },
-                                        onLongClick = { showChannelMenu = true }
-                                    ),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().combinedClickable(
+                                    onClick = { onChannelClick(channel.name) },
+                                    onLongClick = { showChannelMenu = true }
+                                ),
+                                color = MaterialTheme.colorScheme.surface
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(channel.name)
-                                        if (channel.isJoined) {
-                                            Text("Joined", color = Color.Green)
-                                        } else if (isRegistered) {
-                                            TextButton(onClick = { 
-                                                onJoinChannel(channel.name)
-                                                onChannelClick(channel.name)
-                                            }) {
-                                                Text("Join")
-                                            }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = if (channel.isJoined) Icons.Default.ChatBubble else Icons.Default.ChatBubbleOutline,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = if (channel.isJoined) MaterialTheme.colorScheme.primary else Color.Gray
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(text = channel.name, style = MaterialTheme.typography.bodyMedium)
+                                        if (channel.unreadCount > 0) {
+                                            Badge(modifier = Modifier.padding(start = 8.dp)) { Text(channel.unreadCount.toString()) }
+                                        }
+                                    }
+                                    if (!channel.isJoined) {
+                                        TextButton(onClick = { onJoinChannel(channel.name); onChannelClick(channel.name) }) {
+                                            Text(Localizer.getString("connect", lang))
                                         }
                                     }
                                 }
-                                
-                                DropdownMenu(expanded = showChannelMenu, onDismissRequest = { showChannelMenu = false }) {
-                                    DropdownMenuItem(
-                                        text = { Text("Topic Info") },
-                                        onClick = { showChannelMenu = false; onJoinChannel("/TOPIC ${channel.name}") }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Leave Channel") },
-                                        onClick = { showChannelMenu = false; onJoinChannel("/PART ${channel.name}") }
-                                    )
-                                }
                             }
                         }
-                    }
-                    if (isRegistered) {
-                        var newChannel by remember { mutableStateOf("") }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedTextField(
-                                value = newChannel,
-                                onValueChange = { newChannel = it },
-                                label = { Text("Join channel...") },
-                                modifier = Modifier.weight(1f)
-                            )
-                            IconButton(onClick = {
-                                if (newChannel.isNotBlank()) {
-                                    val formatted = if (newChannel.startsWith("#")) newChannel else "#$newChannel"
-                                    onJoinChannel(formatted)
-                                    onChannelClick(formatted)
-                                    newChannel = ""
-                                }
-                            }) {
-                                Icon(Icons.Default.Add, contentDescription = "Join")
-                            }
+                        DropdownMenu(expanded = showChannelMenu, onDismissRequest = { showChannelMenu = false }) {
+                            DropdownMenuItem(text = { Text("Topic Info") }, onClick = { showChannelMenu = false; onJoinChannel("/TOPIC ${channel.name}") })
+                            DropdownMenuItem(text = { Text("Leave Channel") }, onClick = { showChannelMenu = false; onJoinChannel("/PART ${channel.name}") })
                         }
                     }
                 }

@@ -191,9 +191,13 @@ class ChatsViewModel(
 
     fun getBanList(serverId: Long, channel: String): StateFlow<Set<String>> {
         val engine = ircManager.getEngine(serverId) ?: return MutableStateFlow(emptySet())
-        engine.fetchBanList(channel)
+        // Remove automatic fetch here to prevent infinite loop
         return engine.banLists.map { it[normalizeTarget(channel)] ?: emptySet() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+    }
+
+    fun refreshBanList(serverId: Long, channel: String) {
+        ircManager.getEngine(serverId)?.fetchBanList(channel)
     }
 
     fun banUser(serverId: Long, channel: String, mask: String, active: Boolean) {
@@ -332,6 +336,8 @@ class ChatsViewModel(
 
     fun getChannelUsersWithInfo(serverId: Long, channelName: String): StateFlow<List<ChannelUserInfo>> {
         val engine = ircManager.getEngine(serverId) ?: return MutableStateFlow(emptyList())
+        if (!isChannel(channelName)) return MutableStateFlow(emptyList())
+
         val normalizedName = normalizeTarget(channelName)
         
         val key = "${serverId}_$normalizedName"

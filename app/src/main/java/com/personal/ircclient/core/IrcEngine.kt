@@ -807,8 +807,9 @@ class IrcEngine(
             }
             else -> {
                 if (message.command.all { it.isDigit() }) {
-                    // Filter out NAMES responses from logs entirely
-                    if (message.command == "353" || message.command == "366") return
+                    // Filter out non-UI numerics and frequent updates
+                    // 367 = RPL_BANLIST, 368 = RPL_ENDOFBANLIST
+                    if (message.command == "353" || message.command == "366" || message.command == "367" || message.command == "368" || message.command == "324" || message.command == "329") return
 
                     val text = message.parameters.drop(1).joinToString(" ")
                     val targetNick = message.parameters.getOrNull(1)

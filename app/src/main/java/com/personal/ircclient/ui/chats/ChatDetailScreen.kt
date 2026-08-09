@@ -73,7 +73,7 @@ fun ChatDetailScreen(
 ) {
     val messages by viewModel.getMessages(serverId, target).collectAsState(initial = emptyList())
     val user by viewModel.getUser(serverId, target).collectAsState(initial = null)
-    val channelUsers by viewModel.getChannelUsersWithInfo(serverId, target).collectAsState(initial = emptyList())
+    val channelUsers by remember(serverId, target) { viewModel.getChannelUsersWithInfo(serverId, target) }.collectAsState(initial = emptyList())
     val activeTargets by viewModel.activeTargets.collectAsState()
     val currentTargetInfo = activeTargets.find { it.target == target && it.serverId == serverId }
     val myNick by viewModel.getCurrentNickname(serverId).collectAsState()
@@ -84,6 +84,9 @@ fun ChatDetailScreen(
 
     LaunchedEffect(serverId, target) {
         viewModel.clearUnreadCount(serverId, target)
+        if (target.startsWith("#")) {
+            viewModel.refreshBanList(serverId, target)
+        }
     }
 
     DisposableEffect(serverId, target) {
@@ -123,16 +126,17 @@ fun ChatDetailScreen(
     var showAsciiSelector by remember { mutableStateOf<String?>(null) } // target user nick
     var searchQuery by remember { mutableStateOf("") }
     val settings by viewModel.settingsState.collectAsState()
+    val lang = settings.language
     val asciiArtItems by viewModel.asciiArt.collectAsState()
 
     if (showAsciiSelector != null) {
         AlertDialog(
             onDismissRequest = { showAsciiSelector = null },
-            title = { Text("Send Art or Phrase") },
+            title = { Text(Localizer.getString("ascii_phrases", lang)) },
             text = {
                 Column(modifier = Modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState())) {
                     if (asciiArtItems.isEmpty()) {
-                        Text("No saved items. Go to Settings > ASCII & Phrases to add some.")
+                        Text(Localizer.getString("no_ascii", lang))
                     } else {
                         asciiArtItems.forEach { item ->
                             ListItem(
@@ -148,7 +152,7 @@ fun ChatDetailScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showAsciiSelector = null }) { Text("Close") }
+                TextButton(onClick = { showAsciiSelector = null }) { Text(Localizer.getString("close", lang)) }
             }
         )
     }
@@ -156,8 +160,8 @@ fun ChatDetailScreen(
     if (showClearConfirm) {
         AlertDialog(
             onDismissRequest = { showClearConfirm = false },
-            title = { Text("Clear Chat History") },
-            text = { Text("Are you sure you want to delete all messages in this conversation? This cannot be undone.") },
+            title = { Text(Localizer.getString("clear_history", lang)) },
+            text = { Text(Localizer.getString("clear_history_confirm", lang)) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -168,7 +172,7 @@ fun ChatDetailScreen(
                 ) { Text("Clear") }
             },
             dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) { Text("Cancel") }
+                TextButton(onClick = { showClearConfirm = false }) { Text(Localizer.getString("cancel", lang)) }
             }
         )
     }
@@ -176,7 +180,7 @@ fun ChatDetailScreen(
     var showTtlDialog by remember { mutableStateOf(false) }
     var mediaToSend by remember { mutableStateOf<Pair<MessageType, String>?>(null) }
     val ttlOptions = listOf(
-        "No Limit" to null,
+        Localizer.getString("no_limit", lang) to null,
         "30 Seconds" to 30L,
         "1 Minute" to 60L,
         "5 Minutes" to 300L,
@@ -186,7 +190,7 @@ fun ChatDetailScreen(
     if (showTtlDialog && mediaToSend != null) {
         AlertDialog(
             onDismissRequest = { showTtlDialog = false },
-            title = { Text("Self-Destruct Timer") },
+            title = { Text(Localizer.getString("self_destruct", lang)) },
             text = {
                 Column {
                     Text("Select how long the media will be visible:")
@@ -206,7 +210,7 @@ fun ChatDetailScreen(
             },
             confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { showTtlDialog = false; mediaToSend = null }) { Text("Cancel") }
+                TextButton(onClick = { showTtlDialog = false; mediaToSend = null }) { Text(Localizer.getString("cancel", lang)) }
             }
         )
     }
@@ -214,7 +218,7 @@ fun ChatDetailScreen(
     if (showYoutubeSearch) {
         AlertDialog(
             onDismissRequest = { showYoutubeSearch = false },
-            title = { Text("Search Music on YouTube") },
+            title = { Text(Localizer.getString("music_search", lang)) },
             text = {
                 OutlinedTextField(
                     value = searchQuery,
@@ -232,7 +236,7 @@ fun ChatDetailScreen(
                         clipboardManager.setText(AnnotatedString(url))
                         showYoutubeSearch = false
                         searchQuery = ""
-                    }) { Text("Copy Link") }
+                    }) { Text(Localizer.getString("copy_link", lang)) }
                     Button(onClick = {
                         if (searchQuery.isNotBlank()) {
                             val encoded = java.net.URLEncoder.encode(searchQuery, "UTF-8")
@@ -240,11 +244,11 @@ fun ChatDetailScreen(
                             showYoutubeSearch = false
                             searchQuery = ""
                         }
-                    }) { Text("Search") }
+                    }) { Text(Localizer.getString("search", lang)) }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showYoutubeSearch = false }) { Text("Cancel") }
+                TextButton(onClick = { showYoutubeSearch = false }) { Text(Localizer.getString("cancel", lang)) }
             }
         )
     }
@@ -252,7 +256,7 @@ fun ChatDetailScreen(
     if (showQuickSearch) {
         AlertDialog(
             onDismissRequest = { showQuickSearch = false },
-            title = { Text("Quick Search") },
+            title = { Text(Localizer.getString("quick_search", lang)) },
             text = {
                 OutlinedTextField(
                     value = searchQuery,
@@ -270,10 +274,10 @@ fun ChatDetailScreen(
                         showQuickSearch = false
                         searchQuery = ""
                     }
-                }) { Text("Search") }
+                }) { Text(Localizer.getString("search", lang)) }
             },
             dismissButton = {
-                TextButton(onClick = { showQuickSearch = false }) { Text("Cancel") }
+                TextButton(onClick = { showQuickSearch = false }) { Text(Localizer.getString("cancel", lang)) }
             }
         )
     }
@@ -358,7 +362,7 @@ fun ChatDetailScreen(
                 HorizontalDivider()
                 val sortedUsers = remember(channelUsers) {
                     channelUsers.sortedWith(
-                        compareByDescending<com.personal.ircclient.ui.chats.ChannelUserInfo> { it.prefix.isNotEmpty() }
+                        compareByDescending<ChannelUserInfo> { it.prefix.isNotEmpty() }
                             .thenByDescending { it.prefix == "@" || it.prefix == "&" || it.prefix == "~" }
                             .thenByDescending { it.isFriend }
                             .thenBy { it.nickname.lowercase() }
@@ -390,7 +394,7 @@ fun ChatDetailScreen(
                                         showConfirmIgnore = false
                                         scope.launch { dismissState.reset() }
                                     },
-                                    title = { Text(if (amIOp) "Ban User" else "Ignore User") },
+                                    title = { Text(if (amIOp) Localizer.getString("ban_user", lang) else Localizer.getString("ignore", lang)) },
                                     text = { Text("Are you sure you want to ${if (amIOp) "ban" else "ignore"} $nick?") },
                                     confirmButton = {
                                         Button(
@@ -404,13 +408,13 @@ fun ChatDetailScreen(
                                                 scope.launch { dismissState.reset() }
                                             },
                                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                                        ) { Text(if (amIOp) "Ban" else "Ignore") }
+                                        ) { Text(if (amIOp) Localizer.getString("ban", lang) else Localizer.getString("ignore", lang)) }
                                     },
                                     dismissButton = {
                                         TextButton(onClick = { 
                                             showConfirmIgnore = false
                                             scope.launch { dismissState.reset() }
-                                        }) { Text("Cancel") }
+                                        }) { Text(Localizer.getString("cancel", lang)) }
                                     }
                                 )
                             }
@@ -422,7 +426,7 @@ fun ChatDetailScreen(
                                         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.errorContainer).padding(horizontal = 20.dp),
                                         contentAlignment = Alignment.CenterEnd
                                     ) {
-                                        Text(if (amIOp) "Ban" else "Ignore", color = MaterialTheme.colorScheme.onErrorContainer)
+                                        Text(if (amIOp) Localizer.getString("ban", lang) else Localizer.getString("ignore", lang), color = MaterialTheme.colorScheme.onErrorContainer)
                                     }
                                 },
                                 enableDismissFromStartToEnd = false
@@ -444,7 +448,7 @@ fun ChatDetailScreen(
                                                     )
                                                     if (userInfo.isFriend) {
                                                         Spacer(modifier = Modifier.width(4.dp))
-                                                        Icon(Icons.Default.Star, contentDescription = "Friend", tint = Color(0xFFFFD700), modifier = Modifier.size(14.dp))
+                                                        Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(14.dp))
                                                     }
                                                 }
                                             },
@@ -496,7 +500,7 @@ fun ChatDetailScreen(
                                             onClick = { showUserMenu = false; handleSend("/WHOIS $nick") }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Copy Nick") },
+                                            text = { Text(Localizer.getString("copy_nick", lang)) },
                                             onClick = { 
                                                 showUserMenu = false
                                                 clipboardManager.setText(AnnotatedString(nick))
@@ -529,7 +533,7 @@ fun ChatDetailScreen(
                                         if (amIOp) {
                                             val isOp = userInfo.prefix == "@" || userInfo.prefix == "&" || userInfo.prefix == "~"
                                             DropdownMenuItem(
-                                                text = { Text(if (isOp) "Deop $nick" else "Op $nick") },
+                                                text = { Text(if (isOp) Localizer.getString("deop_user", lang) else Localizer.getString("op_user", lang)) },
                                                 onClick = { 
                                                     showUserMenu = false
                                                     viewModel.setOp(serverId, target, nick, !isOp)
@@ -540,14 +544,14 @@ fun ChatDetailScreen(
                                             val isActuallyBanned = banList.contains(banMask) || banList.any { it.contains(nick) }
                                             
                                             DropdownMenuItem(
-                                                text = { Text(if (isActuallyBanned) "Unban $nick" else "Ban $nick", color = MaterialTheme.colorScheme.error) },
+                                                text = { Text(if (isActuallyBanned) "Unban $nick" else Localizer.getString("ban_user", lang), color = MaterialTheme.colorScheme.error) },
                                                 onClick = { 
                                                     showUserMenu = false
                                                     viewModel.banUser(serverId, target, banMask, !isActuallyBanned)
                                                 }
                                             )
                                             DropdownMenuItem(
-                                                text = { Text(Localizer.getString("kick", settings.language) + " $nick", color = MaterialTheme.colorScheme.error) },
+                                                text = { Text(Localizer.getString("kick_user", lang) + " $nick", color = MaterialTheme.colorScheme.error) },
                                                 onClick = { showUserMenu = false; handleSend("/KICK $target $nick") }
                                             )
                                         }
@@ -614,26 +618,26 @@ fun ChatDetailScreen(
                     },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                         }
                     },
                     actions = {
                         if (!isStatus) {
                             if (isChannel) {
                                 IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                    Icon(Icons.Default.People, contentDescription = "Users")
+                                    Icon(Icons.Default.People, contentDescription = null)
                                 }
                             }
                             if (isUser && user?.encryptionKey == null) {
                                 IconButton(onClick = { viewModel.initiateSecureChat(serverId, target) }) {
-                                    Icon(Icons.Default.LockOpen, contentDescription = "Start Secure Chat")
+                                    Icon(Icons.Default.LockOpen, contentDescription = null)
                                 }
                             }
                             
                             var showMoreActions by remember { mutableStateOf(false) }
                             Box {
                                 IconButton(onClick = { showMoreActions = true }) {
-                                    Icon(Icons.Default.MoreVert, contentDescription = "More Actions")
+                                    Icon(Icons.Default.MoreVert, contentDescription = null)
                                 }
                                 DropdownMenu(expanded = showMoreActions, onDismissRequest = { showMoreActions = false }) {
                                     DropdownMenuItem(
@@ -652,7 +656,7 @@ fun ChatDetailScreen(
                                         onClick = { viewModel.setSaveLog(serverId, target, !(currentTargetInfo?.saveLog ?: false)) }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Search YouTube") },
+                                        text = { Text(Localizer.getString("music_search", lang)) },
                                         leadingIcon = { Icon(Icons.Default.MusicNote, null) },
                                         onClick = { 
                                             showMoreActions = false
@@ -660,7 +664,7 @@ fun ChatDetailScreen(
                                         }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Quick Search") },
+                                        text = { Text(Localizer.getString("quick_search", lang)) },
                                         leadingIcon = { Icon(Icons.Default.Search, null) },
                                         onClick = { 
                                             showMoreActions = false
@@ -675,12 +679,12 @@ fun ChatDetailScreen(
                                             text = { 
                                                 Text(
                                                     text = when(cmd) {
-                                                        "JOIN" -> "Join Channel"
+                                                        "JOIN" -> Localizer.getString("join_room", lang)
                                                         "PART" -> "Leave Channel"
                                                         "QUIT" -> "Disconnect"
                                                         "NICK" -> "Change Nickname"
                                                         "TOPIC" -> "Set Topic"
-                                                        "LIST" -> "List Channels"
+                                                        "LIST" -> Localizer.getString("discover", lang)
                                                         "WHOIS" -> "Whois"
                                                         "KICK" -> "Kick User"
                                                         "BAN" -> "Ban Mask"
@@ -690,12 +694,12 @@ fun ChatDetailScreen(
                                                         "VOICE" -> "Give Voice"
                                                         "DEVOICE" -> "Take Voice"
                                                         "MODE" -> "Channel Modes"
-                                                        "CLEAR" -> "Clear Chat"
+                                                        "CLEAR" -> Localizer.getString("clear_history", lang)
                                                         "ME" -> "Action (/me)"
                                                         "NAMES" -> "List Users"
                                                         "INVITE" -> "Invite User"
                                                         "AWAY" -> "Set Away"
-                                                        "IGNORE" -> "Ignore User"
+                                                        "IGNORE" -> Localizer.getString("ignore", lang)
                                                         else -> cmd
                                                     },
                                                     color = if (cmd == "PART" || cmd == "QUIT") MaterialTheme.colorScheme.error else Color.Unspecified
@@ -721,9 +725,6 @@ fun ChatDetailScreen(
                         }
                     }
                 )
-            },
-            floatingActionButton = {
-                // Removed FAB as requested, moved to TopAppBar actions
             },
             bottomBar = {
                 Column(
@@ -807,7 +808,7 @@ fun ChatDetailScreen(
                             IconButton(onClick = { showFormattingTools = !showFormattingTools }) {
                                 Icon(
                                     Icons.Default.FormatColorText, 
-                                    contentDescription = "Formatting",
+                                    contentDescription = null,
                                     tint = if (showFormattingTools) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                 )
                             }
@@ -832,12 +833,12 @@ fun ChatDetailScreen(
                                 value = textFieldValue,
                                 onValueChange = { textFieldValue = it },
                                 modifier = Modifier.fillMaxWidth(),
-                                placeholder = { Text(if (isStatus) "Enter command (e.g. /HELP)..." else "Type a message...") },
+                                placeholder = { Text(if (isStatus) Localizer.getString("enter_command", lang) else Localizer.getString("typing_message", lang)) },
                                 leadingIcon = {
                                     if (!isStatus && !isChannel) {
                                         Box {
                                             IconButton(onClick = { showAttachMenu = true }) {
-                                                Icon(Icons.Default.Add, contentDescription = "Attach")
+                                                Icon(Icons.Default.Add, contentDescription = null)
                                             }
                                             DropdownMenu(expanded = showAttachMenu, onDismissRequest = { showAttachMenu = false }) {
                                                 DropdownMenuItem(
@@ -898,7 +899,7 @@ fun ChatDetailScreen(
                             }) {
                                 Icon(
                                     imageVector = if (isRecording) Icons.Default.StopCircle else Icons.Default.Mic, 
-                                    contentDescription = "Voice",
+                                    contentDescription = null,
                                     tint = if (isRecording) Color.Red else MaterialTheme.colorScheme.onSurface
                                 )
                             }
@@ -909,7 +910,7 @@ fun ChatDetailScreen(
                                 textFieldValue = TextFieldValue("")
                             }
                         }) {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
                         }
                     }
                 }
@@ -953,7 +954,7 @@ fun ChatDetailScreen(
                                     }) {
                                         Icon(
                                             imageVector = if (isCurrentStation) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                            contentDescription = "Toggle Radio"
+                                            contentDescription = null
                                         )
                                     }
                                 }
@@ -1074,8 +1075,9 @@ fun MessageBubble(
     settings: com.personal.ircclient.data.local.entities.SettingsEntity,
     onNavigateToChat: (Long, String) -> Unit,
     contextAndroid: android.content.Context,
-    senderInfo: com.personal.ircclient.ui.chats.ChannelUserInfo? = null
+    senderInfo: ChannelUserInfo? = null
 ) {
+    val lang = settings.language
     val isStatus = msg.target == "Status"
     val isMe = msg.sender == "me" || msg.sender == myNick
     val isSystem = msg.isSystemMessage
@@ -1098,7 +1100,7 @@ fun MessageBubble(
                 showConfirmIgnore = false
                 scope.launch { dismissState.reset() }
             },
-            title = { Text("Ignore User") },
+            title = { Text(Localizer.getString("ignore", lang)) },
             text = { Text("Are you sure you want to ignore ${msg.sender}?") },
             confirmButton = {
                 Button(
@@ -1109,13 +1111,13 @@ fun MessageBubble(
                         showConfirmIgnore = false
                         scope.launch { dismissState.reset() }
                     }
-                ) { Text("Ignore") }
+                ) { Text(Localizer.getString("ignore", lang)) }
             },
             dismissButton = {
                 TextButton(onClick = { 
                     showConfirmIgnore = false
                     scope.launch { dismissState.reset() }
-                }) { Text("Cancel") }
+                }) { Text(Localizer.getString("cancel", lang)) }
             }
         )
     }
@@ -1133,7 +1135,7 @@ fun MessageBubble(
             backgroundContent = {
                 val color = if (dismissState.dismissDirection == SwipeToDismissBoxValue.EndToStart) Color.Gray else Color.Transparent
                 Box(modifier = Modifier.fillMaxSize().background(color).padding(horizontal = 20.dp), contentAlignment = Alignment.CenterEnd) {
-                    if (!isMe && !isSystem) Text("Ignore", color = Color.White)
+                    if (!isMe && !isSystem) Text(Localizer.getString("ignore", lang), color = Color.White)
                 }
             },
             enableDismissFromStartToEnd = false,
@@ -1161,13 +1163,13 @@ fun MessageBubble(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         if (msg.type == MessageType.NOTICE) {
-                            Text(text = "NOTICE from ${msg.sender}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.tertiary)
+                            Text(text = "${Localizer.getString("notice", lang)}: ${msg.sender}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.tertiary)
                         } else if (!isMe && !isStatus && !isSystem) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(text = msg.sender, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                 if (isFriend) {
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(Icons.Default.Star, contentDescription = "Friend", tint = Color(0xFFFFD700), modifier = Modifier.size(12.dp))
+                                    Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(12.dp))
                                 }
                             }
                         } else if (isMe) {
@@ -1249,7 +1251,7 @@ fun MessageBubble(
                             if (loadAttempted) {
                                 AsyncImage(
                                     model = imageUrl,
-                                    contentDescription = "Image Preview",
+                                    contentDescription = null,
                                     modifier = Modifier
                                         .padding(top = 8.dp)
                                         .fillMaxWidth()
@@ -1265,7 +1267,7 @@ fun MessageBubble(
                                 ) {
                                     Icon(Icons.Default.Image, contentDescription = null)
                                     Spacer(Modifier.width(8.dp))
-                                    Text("Load Image (Privacy Risk)")
+                                    Text(Localizer.getString("loading_image_risk", lang))
                                 }
                             }
                         }
@@ -1283,13 +1285,13 @@ fun MessageBubble(
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(Icons.Default.PlayCircle, contentDescription = null, tint = Color.Red)
                                         Spacer(Modifier.width(8.dp))
-                                        Text("YouTube Video", style = MaterialTheme.typography.labelMedium)
+                                        Text(Localizer.getString("youtube_video", lang), style = MaterialTheme.typography.labelMedium)
                                     }
                                     
                                     if (settings.autoLoadImages) {
                                         AsyncImage(
                                             model = "https://img.youtube.com/vi/$videoId/0.jpg",
-                                            contentDescription = "YouTube Thumbnail",
+                                            contentDescription = null,
                                             modifier = Modifier
                                                 .padding(top = 8.dp)
                                                 .fillMaxWidth()
@@ -1325,7 +1327,7 @@ fun MessageBubble(
                                     Icon(Icons.Default.Share, contentDescription = null, tint = Color.Blue)
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        text = "Social Media Link",
+                                        text = Localizer.getString("social_media_link", lang),
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.clickable {
@@ -1342,7 +1344,7 @@ fun MessageBubble(
                         if (isUrl) {
                             AsyncImage(
                                 model = msg.text,
-                                contentDescription = "Image",
+                                contentDescription = null,
                                 modifier = Modifier
                                     .padding(top = 8.dp)
                                     .fillMaxWidth()
@@ -1361,7 +1363,7 @@ fun MessageBubble(
                             bitmap?.let {
                                 Image(
                                     bitmap = it.asImageBitmap(),
-                                    contentDescription = "Image",
+                                    contentDescription = null,
                                     modifier = Modifier.size(150.dp).padding(top = 8.dp)
                                 )
                             }
@@ -1371,20 +1373,20 @@ fun MessageBubble(
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
                             Icon(
                                 imageVector = Icons.Default.PlayArrow, 
-                                contentDescription = "Play",
+                                contentDescription = null,
                                 modifier = Modifier.clickable {
                                     if (isUrl) {
                                         LinkHandler.openLink(contextAndroid, msg.text, settings)
                                     }
                                 }
                             )
-                            Text(if (isUrl) "Voice Message (External)" else "Voice Message", style = MaterialTheme.typography.bodySmall)
+                            Text(if (isUrl) Localizer.getString("voice_message_ext", lang) else Localizer.getString("voice_message", lang), style = MaterialTheme.typography.bodySmall)
                         }
                     }
 
                     if (msg.isModifiedByScript) {
                         Text(
-                            text = "Modified by script",
+                            text = Localizer.getString("modified_by_script", lang),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Light,
                             fontStyle = FontStyle.Italic,
@@ -1405,7 +1407,7 @@ fun MessageBubble(
             )
             HorizontalDivider()
             DropdownMenuItem(
-                text = { Text("Copy Text") },
+                text = { Text(Localizer.getString("copy_text", lang)) },
                 onClick = { 
                     clipboardManager.setText(AnnotatedString(msg.text))
                     showMenu = false
@@ -1413,7 +1415,7 @@ fun MessageBubble(
             )
             if (!isMe && !isStatus && !msg.isSystemMessage) {
                 DropdownMenuItem(
-                    text = { Text("Copy Nick") },
+                    text = { Text(Localizer.getString("copy_nick", lang)) },
                     onClick = { 
                         clipboardManager.setText(AnnotatedString(msg.sender))
                         showMenu = false
@@ -1425,7 +1427,7 @@ fun MessageBubble(
                     onClick = { showMenu = false; onNavigateToChat(serverId, msg.sender) }
                 )
                 DropdownMenuItem(
-                    text = { Text("Notice") },
+                    text = { Text(Localizer.getString("notice", lang)) },
                     onClick = { 
                         showMenu = false
                         val commandString = "/NOTICE ${msg.sender} "
@@ -1463,7 +1465,7 @@ fun MessageBubble(
                 if (amIOp) {
                     val isOp = senderPrefix == "@" || senderPrefix == "&" || senderPrefix == "~"
                     DropdownMenuItem(
-                        text = { Text(if (isOp) "Deop ${msg.sender}" else "Op ${msg.sender}") },
+                        text = { Text(if (isOp) Localizer.getString("deop_user", lang) else Localizer.getString("op_user", lang)) },
                         onClick = { 
                             showMenu = false
                             viewModel.setOp(serverId, msg.target, msg.sender, !isOp)
@@ -1474,14 +1476,14 @@ fun MessageBubble(
                     val isActuallyBanned = banList.contains(banMask) || banList.any { it.contains(msg.sender) }
                     
                     DropdownMenuItem(
-                        text = { Text(if (isActuallyBanned) "Unban ${msg.sender}" else "Ban ${msg.sender}", color = MaterialTheme.colorScheme.error) },
+                        text = { Text(if (isActuallyBanned) "Unban ${msg.sender}" else Localizer.getString("ban_user", lang), color = MaterialTheme.colorScheme.error) },
                         onClick = { 
                             showMenu = false
                             viewModel.banUser(serverId, msg.target, banMask, !isActuallyBanned)
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text(Localizer.getString("kick", settings.language) + " ${msg.sender}", color = MaterialTheme.colorScheme.error) },
+                        text = { Text(Localizer.getString("kick_user", lang) + " ${msg.sender}", color = MaterialTheme.colorScheme.error) },
                         onClick = { showMenu = false; onAction("/KICK ${msg.target} ${msg.sender}") }
                     )
                 }

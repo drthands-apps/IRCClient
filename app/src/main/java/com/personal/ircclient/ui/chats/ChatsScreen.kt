@@ -1,19 +1,20 @@
 package com.personal.ircclient.ui.chats
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
+import com.personal.ircclient.core.utils.Localizer
 import com.personal.ircclient.data.local.dao.TargetInfo
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -23,79 +24,34 @@ fun ChatsScreen(
     viewModel: ChatsViewModel,
     onTargetClick: (Long, String) -> Unit
 ) {
+    val settings by viewModel.settingsState.collectAsState()
+    val lang = settings.language
+
     Column(modifier = Modifier.fillMaxSize()) {
         if (targets.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No active conversations here.")
+                // Check if we are in Rooms or Privates by looking at targets type if possible, 
+                // but better use current route or just a generic message if not sure.
+                // However, based on how it's called in MainScreen, we can pass a hint.
+                // For now, let's try to infer from first target if exists, or just use generic.
+                val isRooms = targets.any { it.target.startsWith("#") }
+                val key = if (isRooms) "no_rooms" else "no_privates"
+                Text(Localizer.getString(key, lang))
             }
         } else {
-            LazyColumn {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 items(targets, key = { "${it.serverId}_${it.target}" }) { targetInfo ->
-                    val scope = rememberCoroutineScope()
-                    var showConfirmClose by remember { mutableStateOf(false) }
-
-                    val dismissState = rememberSwipeToDismissBoxState(
-                        confirmValueChange = {
-                            if (it == SwipeToDismissBoxValue.EndToStart) {
-                                showConfirmClose = true
-                                false
-                            } else false
-                        }
+                    val serverName by viewModel.getServerName(targetInfo.serverId).collectAsState(initial = "Server ${targetInfo.serverId}")
+                    
+                    ChatListItem(
+                        targetInfo = targetInfo,
+                        serverName = serverName,
+                        onClick = { onTargetClick(targetInfo.serverId, targetInfo.target) }
                     )
-
-                    if (showConfirmClose) {
-                        AlertDialog(
-                            onDismissRequest = { 
-                                showConfirmClose = false
-                                scope.launch { dismissState.reset() }
-                            },
-                            title = { Text("Close Conversation") },
-                            text = { Text("Are you sure you want to close the chat with '${targetInfo.target}'?") },
-                            confirmButton = {
-                                Button(
-                                    onClick = {
-                                        viewModel.closeChat(targetInfo.serverId, targetInfo.target)
-                                        showConfirmClose = false
-                                        scope.launch { dismissState.reset() }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                                ) { Text("Close") }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { 
-                                    showConfirmClose = false
-                                    scope.launch { dismissState.reset() }
-                                }) { Text("Cancel") }
-                            }
-                        )
-                    }
-
-                    SwipeToDismissBox(
-                        state = dismissState,
-                        backgroundContent = {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(MaterialTheme.colorScheme.errorContainer)
-                                    .padding(horizontal = 20.dp),
-                                contentAlignment = Alignment.CenterEnd
-                            ) {
-                                Icon(Icons.Default.Delete, contentDescription = "Close", tint = MaterialTheme.colorScheme.onErrorContainer)
-                            }
-                        },
-                        enableDismissFromStartToEnd = false
-                    ) {
-                        TargetItem(
-                            targetInfo = targetInfo,
-                            viewModel = viewModel,
-                            onClick = { 
-                                if (targetInfo.target.startsWith("#") && targetInfo.isJoined == false) {
-                                    viewModel.sendMessage(targetInfo.serverId, targetInfo.target, "/JOIN ${targetInfo.target}")
-                                }
-                                onTargetClick(targetInfo.serverId, targetInfo.target)
-                            }
-                        )
-                    }
                 }
             }
         }
@@ -103,54 +59,50 @@ fun ChatsScreen(
 }
 
 @Composable
-fun TargetItem(targetInfo: TargetInfo, viewModel: ChatsViewModel, onClick: () -> Unit) {
-    val isStatus = targetInfo.target == "Status"
+fun ChatListItem(
+    targetInfo: TargetInfo,
+    serverName: String,
+    onClick: () -> Unit
+) {
     val isChannel = targetInfo.target.startsWith("#")
-    val serverName by viewModel.getServerName(targetInfo.serverId).collectAsState(initial = "Server ${targetInfo.serverId}")
     
-    ListItem(
-        headlineContent = { 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(targetInfo.target)
-                if (targetInfo.isBanned == true) {
-                    Badge(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(start = 8.dp)
-                    ) { Text("BANNED", color = Color.White) }
-                } else if (isChannel && targetInfo.isJoined == true) {
-                    Badge(
-                        containerColor = Color(0xFF4CAF50),
-                        modifier = Modifier.padding(start = 8.dp)
-                    ) { Text("JOINED", color = Color.White) }
-                } else if (isChannel && targetInfo.isJoined == false) {
-                    Badge(
-                        containerColor = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.padding(start = 8.dp)
-                    ) { Text("DISCONNECTED", color = Color.White) }
-                }
-            }
-        },
-        supportingContent = { 
-            val type = if (isStatus) "Server Console" else if (isChannel) "Channel" else "Private Chat"
-            Text("$type • $serverName")
-        },
-        leadingContent = {
-            BadgedBox(
-                badge = {
-                    if ((targetInfo.unreadCount ?: 0) > 0) {
-                        Badge { Text(targetInfo.unreadCount.toString()) }
-                    }
-                }
-            ) {
-                Icon(
-                    imageVector = if (isStatus) Icons.Default.Terminal 
-                                 else if (isChannel) Icons.Default.ChatBubble 
-                                 else Icons.Default.AccountCircle,
-                    contentDescription = null,
-                    modifier = Modifier.size(40.dp)
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (isChannel) Icons.Default.ChatBubble else Icons.Default.Person,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = targetInfo.target,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = if ((targetInfo.unreadCount ?: 0) > 0) FontWeight.Bold else FontWeight.Normal
+                )
+                Text(
+                    text = serverName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-        },
-        modifier = Modifier.clickable(onClick = onClick)
-    )
+            
+            if ((targetInfo.unreadCount ?: 0) > 0) {
+                Badge {
+                    Text(text = targetInfo.unreadCount.toString())
+                }
+            }
+        }
+    }
 }

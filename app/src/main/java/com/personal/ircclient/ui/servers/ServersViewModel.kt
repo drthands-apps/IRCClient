@@ -22,6 +22,8 @@ class ServersViewModel(
     
     val connectionStatuses: StateFlow<Map<Long, com.personal.ircclient.core.IrcEngine.ConnectionStatus>> = ircManager.globalStatuses
 
+    val settings = repository.settings
+
     fun getChannels(serverId: Long): Flow<List<ChannelEntity>> = 
         repository.getChannelsForServer(serverId)
 

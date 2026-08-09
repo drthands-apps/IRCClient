@@ -7,6 +7,9 @@ import com.personal.ircclient.core.audio.TextToSpeechManager
 import com.personal.ircclient.data.local.AppDatabase
 import com.personal.ircclient.data.repository.IrcRepository
 
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
+
 class IrcApplication : Application() {
 
     lateinit var database: AppDatabase
@@ -37,6 +40,41 @@ class IrcApplication : Application() {
         
         ircManager = IrcManager(this, repository)
         ttsManager = TextToSpeechManager(this)
+
+        applicationScope.launch(Dispatchers.IO) {
+            insertDefaultServers()
+        }
+    }
+
+    private val applicationScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    private suspend fun insertDefaultServers() {
+        val servers = repository.allServers.first()
+        if (servers.isEmpty()) {
+            repository.insertServer(com.personal.ircclient.data.local.entities.ServerEntity(
+                name = "Chateamos",
+                host = "irc.chateamos.org",
+                port = 6667,
+                nickname = "FenixUser",
+                generateRandomNick = true,
+                encoding = "windows-1252"
+            ))
+            repository.insertServer(com.personal.ircclient.data.local.entities.ServerEntity(
+                name = "ChatHispano",
+                host = "irc.chathispano.com",
+                port = 6667,
+                nickname = "FenixUser",
+                username = "fenix_rand",
+                generateRandomNick = true
+            ))
+            repository.insertServer(com.personal.ircclient.data.local.entities.ServerEntity(
+                name = "Libera.Chat",
+                host = "irc.libera.chat",
+                port = 6697,
+                nickname = "FenixUser",
+                useSsl = true
+            ))
+        }
     }
 
     override fun onTerminate() {

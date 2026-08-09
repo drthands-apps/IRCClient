@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.personal.ircclient.core.utils.Localizer
 import com.personal.ircclient.data.local.entities.UserEntity
 import com.personal.ircclient.data.local.entities.UserStatus
 import com.personal.ircclient.ui.chats.ChatsViewModel
@@ -24,6 +25,8 @@ fun UserListsScreen(
     onBack: () -> Unit
 ) {
     val servers by viewModel.allServers.collectAsState()
+    val settings by viewModel.settingsState.collectAsState()
+    val lang = settings.language
     var selectedServerId by remember { mutableStateOf<Long?>(null) }
     
     LaunchedEffect(servers) {
@@ -35,15 +38,19 @@ fun UserListsScreen(
     val users by viewModel.allChatUsers.collectAsState()
     
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Friends", "Ignored", "Silenced")
+    val tabs = listOf(
+        Localizer.getString("friends", lang),
+        Localizer.getString("ignored", lang),
+        Localizer.getString("silenced", lang)
+    )
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("User Management") },
+                title = { Text(Localizer.getString("user_management", lang)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                     }
                 }
             )
@@ -56,7 +63,7 @@ fun UserListsScreen(
                 
                 Box(modifier = Modifier.padding(16.dp)) {
                     OutlinedButton(onClick = { expanded = true }) {
-                        Text(selectedServer?.name ?: "Select Server")
+                        Text(selectedServer?.name ?: Localizer.getString("select_server", lang))
                     }
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         servers.forEach { server ->
@@ -85,16 +92,16 @@ fun UserListsScreen(
             val serverUsers = users.filter { it.serverId == selectedServerId }
 
             when (selectedTab) {
-                0 -> FriendList(serverUsers, viewModel)
-                1 -> UserList(serverUsers.filter { it.ignoreStatus != UserStatus.NONE }, viewModel, isIgnore = true)
-                2 -> UserList(serverUsers.filter { it.silenceStatus != UserStatus.NONE }, viewModel, isIgnore = false)
+                0 -> FriendList(serverUsers, lang, viewModel)
+                1 -> UserList(serverUsers.filter { it.ignoreStatus != UserStatus.NONE }, lang, viewModel, isIgnore = true)
+                2 -> UserList(serverUsers.filter { it.silenceStatus != UserStatus.NONE }, lang, viewModel, isIgnore = false)
             }
         }
     }
 }
 
 @Composable
-fun FriendList(users: List<UserEntity>, viewModel: ChatsViewModel) {
+fun FriendList(users: List<UserEntity>, lang: String, viewModel: ChatsViewModel) {
     val friends = users.filter { it.isFriend }
     LazyColumn {
         items(friends) { friend ->
@@ -103,7 +110,7 @@ fun FriendList(users: List<UserEntity>, viewModel: ChatsViewModel) {
                 leadingContent = { Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFD700)) },
                 trailingContent = {
                     IconButton(onClick = { viewModel.setFriend(friend.serverId, friend.nickname, false) }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Remove")
+                        Icon(Icons.Default.Delete, contentDescription = Localizer.getString("remove", lang))
                     }
                 }
             )
@@ -112,20 +119,20 @@ fun FriendList(users: List<UserEntity>, viewModel: ChatsViewModel) {
 }
 
 @Composable
-fun UserList(users: List<UserEntity>, viewModel: ChatsViewModel, isIgnore: Boolean) {
+fun UserList(users: List<UserEntity>, lang: String, viewModel: ChatsViewModel, isIgnore: Boolean) {
     LazyColumn {
         items(users) { user ->
             val status = if (isIgnore) user.ignoreStatus else user.silenceStatus
             ListItem(
                 headlineContent = { Text(user.nickname) },
-                supportingContent = { Text("Mode: ${status.name}") },
+                supportingContent = { Text("${Localizer.getString("mode", lang)}: ${status.name}") },
                 leadingContent = { Icon(Icons.Default.Person, contentDescription = null) },
                 trailingContent = {
                     IconButton(onClick = { 
                         if (isIgnore) viewModel.ignoreUser(user.serverId, user.nickname, UserStatus.NONE)
                         else viewModel.silenceUser(user.serverId, user.nickname, UserStatus.NONE)
                     }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Remove")
+                        Icon(Icons.Default.Delete, contentDescription = Localizer.getString("remove", lang))
                     }
                 }
             )

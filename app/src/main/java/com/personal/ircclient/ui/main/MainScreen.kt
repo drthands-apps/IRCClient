@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -22,6 +23,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.personal.ircclient.IrcApplication
+import com.personal.ircclient.core.utils.Localizer
 import com.personal.ircclient.ui.chats.ChatDetailScreen
 import com.personal.ircclient.ui.chats.ChatsScreen
 import com.personal.ircclient.ui.chats.ChatsViewModel
@@ -60,6 +62,7 @@ fun MainScreen() {
     )
 
     val settings by chatsViewModel.settingsState.collectAsState()
+    val lang = settings.language
 
     IRCClientTheme(themeName = settings.themeName) {
         val navController = rememberNavController()
@@ -83,12 +86,12 @@ fun MainScreen() {
             var channelName by remember { mutableStateOf("") }
             AlertDialog(
                 onDismissRequest = { showJoinChannelDialog = null },
-                title = { Text("Join Channel") },
+                title = { Text(Localizer.getString("join_room", lang)) },
                 text = {
                     OutlinedTextField(
                         value = channelName,
                         onValueChange = { channelName = it },
-                        label = { Text("Channel name (e.g. #linux)") },
+                        label = { Text(Localizer.getString("nav_rooms", lang)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                 },
@@ -100,10 +103,10 @@ fun MainScreen() {
                             navController.navigate(Screen.ChatDetail.createRoute(showJoinChannelDialog!!, formatted))
                             showJoinChannelDialog = null
                         }
-                    }) { Text("Join") }
+                    }) { Text(Localizer.getString("save", lang)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showJoinChannelDialog = null }) { Text("Cancel") }
+                    TextButton(onClick = { showJoinChannelDialog = null }) { Text(Localizer.getString("cancel", lang)) }
                 }
             )
         }
@@ -112,12 +115,12 @@ fun MainScreen() {
             var nickname by remember { mutableStateOf("") }
             AlertDialog(
                 onDismissRequest = { showNewPrivateDialog = null },
-                title = { Text("New Private Chat") },
+                title = { Text(Localizer.getString("new_private", lang)) },
                 text = {
                     OutlinedTextField(
                         value = nickname,
                         onValueChange = { nickname = it },
-                        label = { Text("User nickname") },
+                        label = { Text("Nickname") },
                         modifier = Modifier.fillMaxWidth()
                     )
                 },
@@ -127,10 +130,10 @@ fun MainScreen() {
                             navController.navigate(Screen.ChatDetail.createRoute(showNewPrivateDialog!!, nickname))
                             showNewPrivateDialog = null
                         }
-                    }) { Text("Chat") }
+                    }) { Text(Localizer.getString("save", lang)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showNewPrivateDialog = null }) { Text("Cancel") }
+                    TextButton(onClick = { showNewPrivateDialog = null }) { Text(Localizer.getString("cancel", lang)) }
                 }
             )
         }
@@ -139,10 +142,10 @@ fun MainScreen() {
             topBar = {
                 if (currentRoute != null && !currentRoute.startsWith("chat_detail")) {
                     val title = when (currentRoute) {
-                        Screen.Servers.route -> "Servers"
-                        Screen.Channels.route -> "Rooms"
-                        Screen.DirectMessages.route -> "Privates"
-                        Screen.Settings.route -> "Settings"
+                        Screen.Servers.route -> Localizer.getString("nav_servers", lang)
+                        Screen.Channels.route -> Localizer.getString("nav_rooms", lang)
+                        Screen.DirectMessages.route -> Localizer.getString("nav_privates", lang)
+                        Screen.Settings.route -> Localizer.getString("nav_settings", lang)
                         else -> "FenixIRC"
                     }
                     
@@ -155,13 +158,13 @@ fun MainScreen() {
                                     val activeServers by serversViewModel.activeServerIds.collectAsState()
                                     Box {
                                         IconButton(onClick = { showMenu = true }) {
-                                            Icon(Icons.Default.AddCircle, contentDescription = "Add Room")
+                                            Icon(Icons.Default.AddCircle, contentDescription = null)
                                         }
                                         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                                             activeServers.forEach { serverId ->
                                                 val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
                                                 DropdownMenuItem(
-                                                    text = { Text("Join Room on $serverName") },
+                                                    text = { Text("${Localizer.getString("join_room", lang)} ($serverName)") },
                                                     onClick = { showMenu = false; showJoinChannelDialog = serverId }
                                                 )
                                             }
@@ -169,7 +172,7 @@ fun MainScreen() {
                                             activeServers.forEach { serverId ->
                                                 val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
                                                 DropdownMenuItem(
-                                                    text = { Text("Discover on $serverName") },
+                                                    text = { Text("${Localizer.getString("discover", lang)} ($serverName)") },
                                                     onClick = { showMenu = false; navController.navigate(Screen.ChannelDiscovery.createRoute(serverId)) }
                                                 )
                                             }
@@ -181,18 +184,18 @@ fun MainScreen() {
                                     val activeServers by serversViewModel.activeServerIds.collectAsState()
                                     Box {
                                         IconButton(onClick = { showMenu = true }) {
-                                            Icon(Icons.Default.PersonAdd, contentDescription = "New Private")
+                                            Icon(Icons.Default.PersonAdd, contentDescription = null)
                                         }
                                         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                                             DropdownMenuItem(
-                                                text = { Text("Friend List") },
+                                                text = { Text(Localizer.getString("friend_list", lang)) },
                                                 onClick = { showMenu = false; navController.navigate(Screen.UserLists.route) }
                                             )
                                             HorizontalDivider()
                                             activeServers.forEach { serverId ->
                                                 val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
                                                 DropdownMenuItem(
-                                                    text = { Text("Search User on $serverName") },
+                                                    text = { Text("${Localizer.getString("search_user", lang)} ($serverName)") },
                                                     onClick = { showMenu = false; showNewPrivateDialog = serverId }
                                                 )
                                             }
@@ -221,10 +224,26 @@ fun MainScreen() {
                                         }
                                     }
                                 ) {
-                                    Icon(screen.icon, contentDescription = screen.title)
+                                    val icon = when (screen) {
+                                        Screen.Servers -> Icons.Default.Dns
+                                        Screen.Channels -> Icons.Default.ChatBubble
+                                        Screen.DirectMessages -> Icons.Default.Person
+                                        Screen.Settings -> Icons.Default.Settings
+                                        else -> screen.icon
+                                    }
+                                    Icon(icon, contentDescription = null)
                                 }
                             },
-                            label = { Text(screen.title) },
+                            label = { 
+                                val label = when (screen) {
+                                    Screen.Servers -> Localizer.getString("nav_servers", lang)
+                                    Screen.Channels -> Localizer.getString("nav_rooms", lang)
+                                    Screen.DirectMessages -> Localizer.getString("nav_privates", lang)
+                                    Screen.Settings -> Localizer.getString("nav_settings", lang)
+                                    else -> screen.title
+                                }
+                                Text(label) 
+                            },
                             selected = currentRoute == screen.route,
                             onClick = {
                                 navController.navigate(screen.route) {
@@ -242,11 +261,11 @@ fun MainScreen() {
                         var showMenu by remember { mutableStateOf(false) }
                         Box {
                             FloatingActionButton(onClick = { showMenu = true }) {
-                                Icon(Icons.Default.Dns, contentDescription = "Server Actions")
+                                Icon(Icons.Default.Dns, contentDescription = null)
                             }
                             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                                 DropdownMenuItem(
-                                    text = { Text("Add New Server") },
+                                    text = { Text(Localizer.getString("add_new", lang)) },
                                     leadingIcon = { Icon(Icons.Default.Add, null) },
                                     onClick = { 
                                         showMenu = false
@@ -255,7 +274,7 @@ fun MainScreen() {
                                 )
                                 HorizontalDivider()
                                 DropdownMenuItem(
-                                    text = { Text("Connect All") },
+                                    text = { Text(Localizer.getString("connect_all", lang)) },
                                     leadingIcon = { Icon(Icons.Default.CloudDone, null) },
                                     onClick = { 
                                         showMenu = false
@@ -263,29 +282,15 @@ fun MainScreen() {
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Disconnect All") },
+                                    text = { Text(Localizer.getString("disconnect_all", lang)) },
                                     leadingIcon = { Icon(Icons.Default.CloudOff, null) },
                                     onClick = { 
                                         showMenu = false
                                         chatsViewModel.disconnectAll()
                                     }
                                 )
-                                HorizontalDivider()
-                                DropdownMenuItem(
-                                    text = { Text("Server Info (LUSERS)") },
-                                    leadingIcon = { Icon(Icons.Default.Info, null) },
-                                    onClick = { 
-                                        showMenu = false
-                                        serversViewModel.servers.value.forEach { 
-                                            chatsViewModel.sendMessage(it.id, "Status", "/LUSERS") 
-                                        }
-                                    }
-                                )
                             }
                         }
-                    }
-                    Screen.Channels.route, Screen.DirectMessages.route -> {
-                        // Moved to TopAppBar
                     }
                 }
             }
@@ -298,6 +303,7 @@ fun MainScreen() {
                 composable(Screen.Servers.route) { 
                     ServersScreen(
                         viewModel = serversViewModel,
+                        chatsViewModel = chatsViewModel,
                         onAddServerClick = { navController.navigate(Screen.AddServer.route) },
                         onEditServerClick = { serverId -> 
                             navController.navigate(Screen.EditServer.createRoute(serverId))

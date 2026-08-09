@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.personal.ircclient.core.utils.Localizer
 import com.personal.ircclient.data.local.entities.ChannelDiscoveryEntity
 import com.personal.ircclient.ui.servers.ServersViewModel
 
@@ -29,6 +30,8 @@ fun ChannelListScreen(
     onJoin: (String) -> Unit
 ) {
     val channels by viewModel.getDiscoveredChannels(serverId).collectAsState(initial = emptyList())
+    val settings by viewModel.settings.collectAsState(initial = null)
+    val lang = settings?.language ?: "en"
     
     LaunchedEffect(serverId) {
         if (channels.isEmpty()) {
@@ -36,7 +39,7 @@ fun ChannelListScreen(
         }
     }
 
-    var sortMode by remember { mutableStateOf("users") } // "name", "users"
+    var sortMode by remember { mutableStateOf("users") } 
     var minUsers by remember { mutableStateOf(0) }
     var showFilterDialog by remember { mutableStateOf(false) }
 
@@ -48,10 +51,10 @@ fun ChannelListScreen(
     if (showFilterDialog) {
         AlertDialog(
             onDismissRequest = { showFilterDialog = false },
-            title = { Text("Filter Channels") },
+            title = { Text(Localizer.getString("filter_channels", lang)) },
             text = {
                 Column {
-                    Text("Minimum Users: $minUsers")
+                    Text("${Localizer.getString("min_users", lang)}: $minUsers")
                     Slider(
                         value = minUsers.toFloat(),
                         onValueChange = { minUsers = it.toInt() },
@@ -60,28 +63,28 @@ fun ChannelListScreen(
                     )
                 }
             },
-            confirmButton = { Button(onClick = { showFilterDialog = false }) { Text("Apply") } }
+            confirmButton = { Button(onClick = { showFilterDialog = false }) { Text(Localizer.getString("apply", lang)) } }
         )
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Channels (${filteredChannels.size})") },
+                title = { Text("${Localizer.getString("nav_rooms", lang)} (${filteredChannels.size})") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.refreshChannelList(serverId) }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        Icon(Icons.Default.Refresh, contentDescription = null)
                     }
                     IconButton(onClick = { sortMode = if (sortMode == "users") "name" else "users" }) {
-                        Icon(Icons.Default.Sort, contentDescription = "Sort")
+                        Icon(Icons.Default.Sort, contentDescription = null)
                     }
                     IconButton(onClick = { showFilterDialog = true }) {
-                        Icon(Icons.Default.FilterList, contentDescription = "Filter")
+                        Icon(Icons.Default.FilterList, contentDescription = null)
                     }
                 }
             )
@@ -93,14 +96,14 @@ fun ChannelListScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(filteredChannels) { channel ->
-                ChannelBubble(channel = channel, onClick = { onJoin(channel.channelName) })
+                ChannelBubble(channel = channel, lang = lang, onClick = { onJoin(channel.channelName) })
             }
         }
     }
 }
 
 @Composable
-fun ChannelBubble(channel: ChannelDiscoveryEntity, onClick: () -> Unit) {
+fun ChannelBubble(channel: ChannelDiscoveryEntity, lang: String, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -118,12 +121,12 @@ fun ChannelBubble(channel: ChannelDiscoveryEntity, onClick: () -> Unit) {
                     color = MaterialTheme.colorScheme.primary
                 )
                 Badge {
-                    Text("${channel.userCount} users")
+                    Text("${channel.userCount} ${Localizer.getString("users", lang)}")
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = if (channel.topic.isBlank()) "No topic set" else channel.topic,
+                text = if (channel.topic.isBlank()) Localizer.getString("no_topic", lang) else channel.topic,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 modifier = Modifier.basicMarquee()
