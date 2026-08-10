@@ -11,11 +11,19 @@ class IrcRepository(
     private val userDao: UserDao,
     private val channelDiscoveryDao: ChannelDiscoveryDao,
     private val settingsDao: SettingsDao,
-    private val asciiArtDao: com.personal.ircclient.data.local.dao.AsciiArtDao
+    private val asciiArtDao: AsciiArtDao,
+    private val scriptDao: ScriptDao
 ) {
     // Settings
     val settings: Flow<SettingsEntity?> = settingsDao.getSettings()
     suspend fun updateSettings(settings: SettingsEntity) = settingsDao.updateSettings(settings)
+
+    // Scripts
+    val allScripts: Flow<List<ScriptEntity>> = scriptDao.getAllScripts()
+    suspend fun getActiveScripts() = scriptDao.getActiveScripts()
+    suspend fun insertScript(script: ScriptEntity) = scriptDao.insertScript(script)
+    suspend fun updateScript(script: ScriptEntity) = scriptDao.updateScript(script)
+    suspend fun deleteScript(script: ScriptEntity) = scriptDao.deleteScript(script)
 
     // Servers
     val allServers: Flow<List<ServerEntity>> = serverDao.getAllServers()

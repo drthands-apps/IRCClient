@@ -35,7 +35,8 @@ class IrcApplication : Application() {
             database.userDao(),
             database.channelDiscoveryDao(),
             database.settingsDao(),
-            database.asciiArtDao()
+            database.asciiArtDao(),
+            database.scriptDao()
         )
         
         ircManager = IrcManager(this, repository)

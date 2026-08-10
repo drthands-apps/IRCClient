@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,9 +20,7 @@ import com.personal.ircclient.core.utils.Localizer
 import com.personal.ircclient.core.IrcEngine
 import com.personal.ircclient.data.local.entities.ChannelEntity
 import com.personal.ircclient.data.local.entities.ServerEntity
-import com.personal.ircclient.data.repository.IrcRepository
 import com.personal.ircclient.ui.chats.ChatsViewModel
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -75,11 +74,11 @@ fun ServersScreen(
         }
         items(servers, key = { it.id }) { server ->
             val connectionStatus = statuses[server.id] ?: IrcEngine.ConnectionStatus.DISCONNECTED
+            
             val dismissState = rememberSwipeToDismissBoxState(
                 confirmValueChange = {
                     if (it == SwipeToDismissBoxValue.EndToStart) {
                         if (connectionStatus != IrcEngine.ConnectionStatus.DISCONNECTED) {
-                            // Show confirmation maybe? For now just disconnect
                             viewModel.disconnectServer(server.id)
                         }
                         true
@@ -87,43 +86,25 @@ fun ServersScreen(
                 }
             )
 
-            var showConfirmDisconnect by remember { mutableStateOf(false) }
-            if (showConfirmDisconnect) {
-                AlertDialog(
-                    onDismissRequest = { 
-                        showConfirmDisconnect = false
-                        scope.launch { dismissState.reset() }
-                    },
-                    title = { Text(Localizer.getString("disconnect", lang)) },
-                    text = { Text("Are you sure you want to disconnect?") },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                viewModel.disconnectServer(server.id)
-                                showConfirmDisconnect = false
-                                scope.launch { dismissState.reset() }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                        ) { Text(Localizer.getString("disconnect", lang)) }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { 
-                            showConfirmDisconnect = false
-                            scope.launch { dismissState.reset() }
-                        }) { Text(Localizer.getString("cancel", lang)) }
-                    }
-                )
-            }
-
             SwipeToDismissBox(
                 state = dismissState,
                 backgroundContent = {
                     val color = when (dismissState.dismissDirection) {
-                        SwipeToDismissBoxValue.EndToStart -> Color.Red.copy(alpha = 0.5f)
+                        SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.errorContainer
                         else -> Color.Transparent
                     }
-                    Box(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp).background(color), contentAlignment = Alignment.CenterEnd) {
-                        Icon(Icons.Default.CloudOff, contentDescription = "Disconnect", tint = Color.White)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 20.dp)
+                            .background(color, shape = MaterialTheme.shapes.medium),
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        Icon(
+                            Icons.Default.CloudOff,
+                            contentDescription = Localizer.getString("disconnect", lang),
+                            tint = MaterialTheme.colorScheme.onErrorContainer
+                        )
                     }
                 },
                 enableDismissFromStartToEnd = false
@@ -266,11 +247,21 @@ fun ServerItem(
                             state = dismissState,
                             backgroundContent = {
                                 val color = when (dismissState.dismissDirection) {
-                                    SwipeToDismissBoxValue.EndToStart -> Color.Red.copy(alpha = 0.5f)
+                                    SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.errorContainer
                                     else -> Color.Transparent
                                 }
-                                Box(modifier = Modifier.fillMaxSize().background(color), contentAlignment = Alignment.CenterEnd) {
-                                    Icon(Icons.Default.Logout, null, tint = Color.White, modifier = Modifier.padding(end = 16.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(color, shape = MaterialTheme.shapes.small)
+                                        .padding(horizontal = 16.dp),
+                                    contentAlignment = Alignment.CenterEnd
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Logout,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onErrorContainer
+                                    )
                                 }
                             },
                             enableDismissFromStartToEnd = false

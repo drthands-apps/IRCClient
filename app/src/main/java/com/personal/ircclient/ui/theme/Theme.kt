@@ -1,17 +1,14 @@
 package com.personal.ircclient.ui.theme
 
 import android.app.Activity
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
-
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
     primary = Purple80,
@@ -41,14 +38,27 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun IRCClientTheme(
     themeName: String = "LIGHT",
-    dynamicColor: Boolean = false, // Disable dynamic for custom themes
+    primaryColor: Color? = null,
     content: @Composable () -> Unit
 ) {
     val darkTheme = themeName == "DARK" || themeName == "OLED"
-    val colorScheme = when (themeName) {
+    val baseScheme = when (themeName) {
         "OLED" -> OLEDColorScheme
         "DARK" -> DarkColorScheme
         else -> LightColorScheme
+    }
+
+    val colorScheme = if (primaryColor != null) {
+        baseScheme.copy(primary = primaryColor)
+    } else {
+        baseScheme
+    }
+
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        val window = (view.context as Activity).window
+        window.statusBarColor = colorScheme.surface.toArgb()
+        WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
     }
 
     MaterialTheme(

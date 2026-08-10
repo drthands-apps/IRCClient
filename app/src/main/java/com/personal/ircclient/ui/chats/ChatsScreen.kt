@@ -1,11 +1,13 @@
 package com.personal.ircclient.ui.chats
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,10 +32,6 @@ fun ChatsScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         if (targets.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                // Check if we are in Rooms or Privates by looking at targets type if possible, 
-                // but better use current route or just a generic message if not sure.
-                // However, based on how it's called in MainScreen, we can pass a hint.
-                // For now, let's try to infer from first target if exists, or just use generic.
                 val isRooms = targets.any { it.target.startsWith("#") }
                 val key = if (isRooms) "no_rooms" else "no_privates"
                 Text(Localizer.getString(key, lang))
@@ -47,11 +45,44 @@ fun ChatsScreen(
                 items(targets, key = { "${it.serverId}_${it.target}" }) { targetInfo ->
                     val serverName by viewModel.getServerName(targetInfo.serverId).collectAsState(initial = "Server ${targetInfo.serverId}")
                     
-                    ChatListItem(
-                        targetInfo = targetInfo,
-                        serverName = serverName,
-                        onClick = { onTargetClick(targetInfo.serverId, targetInfo.target) }
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = {
+                            if (it == SwipeToDismissBoxValue.EndToStart) {
+                                viewModel.closeChat(targetInfo.serverId, targetInfo.target)
+                                true
+                            } else false
+                        }
                     )
+
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        backgroundContent = {
+                            val color = when (dismissState.dismissDirection) {
+                                SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.errorContainer
+                                else -> Color.Transparent
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(color, shape = MaterialTheme.shapes.medium)
+                                    .padding(horizontal = 20.dp),
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = Localizer.getString("delete", lang),
+                                    tint = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        },
+                        enableDismissFromStartToEnd = false
+                    ) {
+                        ChatListItem(
+                            targetInfo = targetInfo,
+                            serverName = serverName,
+                            onClick = { onTargetClick(targetInfo.serverId, targetInfo.target) }
+                        )
+                    }
                 }
             }
         }

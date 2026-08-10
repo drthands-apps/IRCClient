@@ -22,9 +22,9 @@ class IrcEngine(
     private val context: android.content.Context,
     val serverId: Long,
     private var config: IrcConfig,
-    private val repository: IrcRepository? = null,
-    private val sniffer: ScriptSniffer = ScriptSniffer()
+    private val repository: IrcRepository? = null
 ) {
+    private val sniffer: ScriptSniffer = ScriptSniffer(repository)
     private val commandHandler = CommandHandler(this, repository)
 
     private var joinMode = EventDisplayMode.ROOM
@@ -72,6 +72,10 @@ class IrcEngine(
                 send("NICK ${newConfig.nickname}")
             }
         }
+    }
+
+    fun refreshScripts() {
+        sniffer.refreshScripts()
     }
 
     private var socket: Socket? = null
@@ -853,8 +857,8 @@ class IrcEngine(
         }
     }
 
-    suspend fun send(raw: String) {
-        val finalRaw = sniffer.onOutgoingMessage(raw) ?: return
+    suspend fun send(raw: String, target: String? = null) {
+        val finalRaw = sniffer.onOutgoingMessage(raw, target ?: currentlyViewingTarget, currentNickname) ?: return
         withContext(Dispatchers.IO) {
             try {
                 writer?.write("$finalRaw\r\n")

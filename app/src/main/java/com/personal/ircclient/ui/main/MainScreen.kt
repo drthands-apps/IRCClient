@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -64,7 +65,10 @@ fun MainScreen() {
     val settings by chatsViewModel.settingsState.collectAsState()
     val lang = settings.language
 
-    IRCClientTheme(themeName = settings.themeName) {
+    IRCClientTheme(
+        themeName = settings.themeName,
+        primaryColor = Color(settings.ownMessageColor)
+    ) {
         val navController = rememberNavController()
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = navBackStackEntry?.destination?.route

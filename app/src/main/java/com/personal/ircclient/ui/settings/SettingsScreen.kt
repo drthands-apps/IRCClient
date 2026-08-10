@@ -79,7 +79,7 @@ fun SettingsScreen(
 
     Row(modifier = Modifier.fillMaxSize()) {
         NavigationRail(
-            modifier = Modifier.width(100.dp), // Increased for long labels
+            modifier = Modifier.width(100.dp),
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         ) {
             categories.forEach { (name, icon) ->
@@ -120,7 +120,7 @@ fun SettingsScreen(
                 "Radio" -> RadioSettings(settings, viewModel)
                 "Connectivity" -> ConnectivitySettings(settings, viewModel)
                 "ASCII & Phrases" -> AsciiManagementSettings(viewModel, lang)
-                "Scripts" -> ScriptsSettings()
+                "Scripts" -> ScriptsSettings(viewModel, lang)
                 "About" -> AboutSettings(context, lang)
             }
         }
@@ -128,14 +128,98 @@ fun SettingsScreen(
 }
 
 @Composable
-fun ScriptsSettings() {
+fun ScriptsSettings(viewModel: ChatsViewModel, lang: String) {
+    val scripts by viewModel.allScripts.collectAsState()
+    var showAddDialog by remember { mutableStateOf<com.personal.ircclient.data.local.entities.ScriptEntity?>(null) }
+
     Column {
-        Text("Scripting Engine", style = MaterialTheme.typography.titleMedium)
-        Text("Version Pro feature: Create and edit custom IRC event handlers using JavaScript.", style = MaterialTheme.typography.bodySmall)
-        Spacer(Modifier.height(16.dp))
-        Button(onClick = { /* Not implemented yet */ }) {
-            Text("Open Script Editor")
+        Button(
+            onClick = { showAddDialog = com.personal.ircclient.data.local.entities.ScriptEntity(name = "", content = "") },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.Add, null)
+            Text(Localizer.getString("add_new", lang))
         }
+
+        Spacer(Modifier.height(16.dp))
+
+        if (scripts.isEmpty()) {
+            Text("No scripts created yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+        } else {
+            scripts.forEach { script ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f).clickable { showAddDialog = script }) {
+                            Text(script.name, style = MaterialTheme.typography.titleSmall)
+                            Text(script.triggerType, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                        Row {
+                            Switch(
+                                checked = script.isActive,
+                                onCheckedChange = { viewModel.toggleScript(script) },
+                                modifier = Modifier.scale(0.8f)
+                            )
+                            IconButton(onClick = { viewModel.deleteScript(script) }) {
+                                Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAddDialog != null) {
+        var name by remember { mutableStateOf(showAddDialog!!.name) }
+        var content by remember { mutableStateOf(showAddDialog!!.content) }
+        var trigger by remember { mutableStateOf(showAddDialog!!.triggerType) }
+
+        AlertDialog(
+            onDismissRequest = { showAddDialog = null },
+            title = { Text(if (showAddDialog!!.id == 0L) "New Script" else "Edit Script") },
+            text = {
+                Column {
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Script Name") }, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                    
+                    Text("Trigger Type:", style = MaterialTheme.typography.labelSmall)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = trigger == "OUTGOING", onClick = { trigger = "OUTGOING" })
+                        Text("Outgoing (Aliases)", style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.width(8.dp))
+                        RadioButton(selected = trigger == "INCOMING", onClick = { trigger = "INCOMING" })
+                        Text("Incoming", style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    OutlinedTextField(
+                        value = content, 
+                        onValueChange = { content = it }, 
+                        label = { Text("Script Logic") }, 
+                        placeholder = { Text("OUT: /hello -> PRIVMSG %T :Hi!") },
+                        modifier = Modifier.fillMaxWidth().height(200.dp)
+                    )
+                    Text("Support: OUT: /alias -> Replacement", style = MaterialTheme.typography.labelSmall)
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (name.isNotBlank() && content.isNotBlank()) {
+                        viewModel.insertScript(name, content, trigger, showAddDialog?.id ?: 0L)
+                        showAddDialog = null
+                    }
+                }) { Text(Localizer.getString("save", lang)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddDialog = null }) { Text(Localizer.getString("cancel", lang)) }
+            }
+        )
     }
 }
 

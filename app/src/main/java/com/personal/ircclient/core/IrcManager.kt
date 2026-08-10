@@ -141,4 +141,8 @@ class IrcManager(private val context: Context, private val repository: IrcReposi
     fun updateConfig(serverId: Long, config: IrcConfig) {
         connections[serverId]?.updateConfig(config)
     }
+
+    fun refreshScripts() {
+        connections.values.forEach { it.refreshScripts() }
+    }
 }

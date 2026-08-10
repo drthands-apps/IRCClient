@@ -230,6 +230,31 @@ class ChatsViewModel(
         }
     }
 
+    // Scripts
+    val allScripts: StateFlow<List<ScriptEntity>> = repository.allScripts
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun insertScript(name: String, content: String, trigger: String, id: Long = 0L) {
+        viewModelScope.launch {
+            repository.insertScript(ScriptEntity(id = id, name = name, content = content, triggerType = trigger))
+            ircManager.refreshScripts()
+        }
+    }
+
+    fun deleteScript(script: ScriptEntity) {
+        viewModelScope.launch {
+            repository.deleteScript(script)
+            ircManager.refreshScripts()
+        }
+    }
+
+    fun toggleScript(script: ScriptEntity) {
+        viewModelScope.launch {
+            repository.updateScript(script.copy(isActive = !script.isActive))
+            ircManager.refreshScripts()
+        }
+    }
+
     fun sendAsciiArt(serverId: Long, target: String, item: AsciiArtEntity) {
         viewModelScope.launch {
             val lines = item.content.split("\n")
