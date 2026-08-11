@@ -363,7 +363,7 @@ fun MainScreen() {
                             icon = { 
                                 val badgeCount = when (screen) {
                                     Screen.Servers -> statusUnread
-                                    Screen.Channels -> if (totalUsersCount > 0) totalUsersCount else channelsUnread
+                                    Screen.Channels -> totalUsersCount
                                     Screen.DirectMessages -> privatesUnread
                                     else -> 0
                                 }
@@ -372,9 +372,7 @@ fun MainScreen() {
                                         if (badgeCount > 0) {
                                             Badge { 
                                                 Text(
-                                                    if (screen == Screen.Channels && totalUsersCount > 0) 
-                                                        if (totalUsersCount > 999) "999+" else totalUsersCount.toString()
-                                                    else badgeCount.toString()
+                                                    if (badgeCount > 999) "999+" else badgeCount.toString()
                                                 ) 
                                             }
                                         }

@@ -113,6 +113,9 @@ class IrcEngine(
 
     private var lastMessageTime = System.currentTimeMillis()
     private val motdBuffer = StringBuilder()
+    
+    private var lastWhoisSource: String? = null
+    private val whoisBuffer = StringBuilder()
 
     enum class ConnectionStatus {
         DISCONNECTED, CONNECTING, CONNECTED, REGISTERING, REGISTERED, ERROR
@@ -192,6 +195,7 @@ class IrcEngine(
     }
 
     suspend fun logSystemMessage(target: String, text: String) {
+        incrementUnreadCount(target)
         repository?.insertMessage(
             MessageEntity(
                 serverId = serverId,
@@ -222,6 +226,8 @@ class IrcEngine(
         val target = if (mode == EventDisplayMode.ROOM && channel != null) {
             normalizeTarget(channel)
         } else "Status"
+
+        incrementUnreadCount(target)
 
         repository?.insertMessage(
             MessageEntity(
@@ -401,6 +407,18 @@ class IrcEngine(
                 val topic = message.parameters.getOrNull(2) ?: ""
                 updateChannelTopic(normalizeTarget(channel), topic)
                 logEvent(channel, "Topic for $channel: $topic", EventDisplayMode.ROOM, MessageType.TOPIC)
+            }
+            "311", "312", "313", "317", "319", "301", "314", "330", "671", "307", "378", "379", "320" -> { // WHOIS/WHOWAS replies
+                val text = message.parameters.drop(1).joinToString(" ")
+                whoisBuffer.append(text).append("\n")
+            }
+            "318", "369" -> { // End of WHOIS/WHOWAS
+                val target = lastWhoisSource ?: "Status"
+                val text = whoisBuffer.toString().trim()
+                if (text.isNotEmpty()) {
+                    logSystemMessage(target, "WHOIS Results:\n$text")
+                }
+                whoisBuffer.clear()
             }
             "333" -> { // RPL_TOPICWHOTIME
                 val channel = message.parameters.getOrNull(1) ?: return
@@ -828,22 +846,13 @@ class IrcEngine(
                     }
 
                     val text = message.parameters.drop(1).joinToString(" ")
-                    val targetNick = message.parameters.getOrNull(1)
                     
-                    // Route WHOIS info to a dedicated private chat
-                    val finalTarget = when (message.command) {
-                        "311", "312", "317", "318", "319", "301", "369", "313", "330" -> if (targetNick != null) "WHOIS $targetNick" else "Status"
-                        else -> "Status"
-                    }
-                    
-                    if (finalTarget != "Status") {
-                        incrementUnreadCount(finalTarget)
-                    }
+                    incrementUnreadCount("Status")
 
                     repository?.insertMessage(
                         MessageEntity(
                             serverId = serverId,
-                            target = finalTarget,
+                            target = "Status",
                             sender = "Server",
                             text = text,
                             isSystemMessage = true,
@@ -869,6 +878,10 @@ class IrcEngine(
     }
 
     suspend fun executeCommand(target: String, input: String): Boolean {
+        if (input.startsWith("/WHOIS ", ignoreCase = true) || input.startsWith("/WHOWAS ", ignoreCase = true)) {
+            lastWhoisSource = target
+            whoisBuffer.clear()
+        }
         return commandHandler.handleCommand(target, input)
     }
 
@@ -930,34 +943,43 @@ class IrcEngine(
     }
 
     private suspend fun incrementUnreadCount(name: String) {
-        if (name == "Status") return
         val isViewing = name.equals(currentlyViewingTarget, ignoreCase = true)
         val now = System.currentTimeMillis()
         
-        val channel = repository?.getChannel(serverId, name)
-        if (channel != null) {
-            repository.updateChannel(channel.copy(
-                unreadCount = if (isViewing) 0 else channel.unreadCount + 1,
-                lastVisited = now
-            ))
-        } else {
-            repository?.insertChannel(
-                ChannelEntity(
-                    serverId = serverId,
-                    name = name,
-                    unreadCount = if (isViewing) 0 else 1,
-                    isJoined = isChannel(name),
+        if (name == "Status" || isChannel(name)) {
+            val channel = repository?.getChannel(serverId, name)
+            if (channel != null) {
+                repository.updateChannel(channel.copy(
+                    unreadCount = if (isViewing) 0 else channel.unreadCount + 1,
                     lastVisited = now
+                ))
+            } else {
+                repository?.insertChannel(
+                    ChannelEntity(
+                        serverId = serverId,
+                        name = name,
+                        unreadCount = if (isViewing) 0 else 1,
+                        isJoined = true,
+                        lastVisited = now
+                    )
                 )
-            )
-        }
-
-        if (!isChannel(name)) {
+            }
+        } else {
             val user = repository?.getUser(name, serverId)
             if (user != null) {
-                repository.insertUser(user.copy(lastVisited = now))
+                repository.insertUser(user.copy(
+                    unreadCount = if (isViewing) 0 else user.unreadCount + 1,
+                    lastVisited = now
+                ))
             } else {
-                repository?.insertUser(UserEntity(nickname = name, serverId = serverId, lastVisited = now))
+                repository?.insertUser(
+                    UserEntity(
+                        nickname = name,
+                        serverId = serverId,
+                        unreadCount = if (isViewing) 0 else 1,
+                        lastVisited = now
+                    )
+                )
             }
         }
     }

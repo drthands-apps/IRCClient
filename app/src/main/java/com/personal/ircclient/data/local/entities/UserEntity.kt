@@ -24,7 +24,8 @@ data class UserEntity(
     val secureHandshakeStatus: HandshakeStatus = HandshakeStatus.NONE,
     val notes: String? = null,
     val isFavorite: Boolean = false,
-    val lastVisited: Long = 0
+    val lastVisited: Long = 0,
+    val unreadCount: Int = 0
 )
 
 enum class HandshakeStatus {

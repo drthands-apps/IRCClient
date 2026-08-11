@@ -28,7 +28,7 @@ data class SettingsEntity(
     val proxyHost: String = "",
     val proxyPort: Int = 1080,
     val proxyType: String = "SOCKS", // SOCKS or HTTP
-    val customUserAgent: String = "FenixIRC/0.1",
+    val customUserAgent: String = "FenixIRC/0.5.2",
     val openLinksExternally: Boolean = true,
     val preferredBrowser: String = "SYSTEM_DEFAULT",
     val runInBackground: Boolean = false,
@@ -37,6 +37,10 @@ data class SettingsEntity(
     // Preview Settings
     val showLinkPreviews: Boolean = false,
     val autoLoadImages: Boolean = false,
+    
+    // History & Logs
+    val maxHistoryLines: Int = 500,
+    val logStoragePath: String = "internal", // internal or external
     
     // Appearance
     val enableIrcColors: Boolean = true,

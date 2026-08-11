@@ -83,7 +83,14 @@ class IrcRepository(
     fun getMessagesForTarget(serverId: Long, target: String): Flow<List<MessageEntity>> =
         messageDao.getMessagesForTarget(serverId, target)
 
-    suspend fun insertMessage(message: MessageEntity) = messageDao.insertMessage(message)
+    suspend fun insertMessage(message: MessageEntity) {
+        messageDao.insertMessage(message)
+        
+        // Limit history lines if not marked to save log permanently
+        val settings = settingsDao.getSettings().first()
+        val limit = settings?.maxHistoryLines ?: 500
+        messageDao.limitHistory(message.serverId, message.target, limit)
+    }
     suspend fun clearHistory(serverId: Long, target: String) = messageDao.clearHistory(serverId, target)
     fun getAllActiveTargets() = messageDao.getAllActiveTargets()
 

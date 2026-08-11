@@ -1029,7 +1029,7 @@ fun ChatDetailScreen(
                         reverseLayout = true,
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp)
                     ) {
-                        items(messages) { msg ->
+                        items(messages, key = { it.id }) { msg ->
                             val senderInfo = channelUsers.find { it.nickname == msg.sender }
                             MessageBubble(
                                 msg = msg,
@@ -1266,7 +1266,8 @@ fun MessageBubble(
                     
                     val isMOTD = msg.text.contains("MOTD", ignoreCase = true) || isStatus
                     val lines = msg.text.split("\n")
-                    val isDrawing = lines.size > 3 || (isMOTD && lines.any { it.contains("  ") })
+                    val isDrawing = (lines.size > 5 && lines.any { it.contains("  ") } && !msg.text.startsWith("WHOIS Results:")) || 
+                                    (isMOTD && lines.any { it.contains("  ") } && !msg.text.startsWith("WHOIS Results:"))
                     
                     if (isDrawing) {
                         Surface(
@@ -1279,8 +1280,8 @@ fun MessageBubble(
                                     Text(
                                         text = stripIrcColors(line),
                                         style = TextStyle(
-                                            fontSize = 5.sp,
-                                            lineHeight = 6.sp,
+                                            fontSize = 8.sp,
+                                            lineHeight = 9.sp,
                                             fontFamily = FontFamily.Monospace,
                                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)

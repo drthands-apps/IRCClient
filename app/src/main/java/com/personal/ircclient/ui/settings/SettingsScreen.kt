@@ -394,6 +394,36 @@ fun SecuritySettings(
             viewModel.updateSettings(settings.copy(autoLoadImages = it))
         }
         Spacer(Modifier.height(16.dp))
+        Text("History & Logs", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        var maxLines by remember { mutableStateOf(settings.maxHistoryLines.toString()) }
+        OutlinedTextField(
+            value = maxLines, 
+            onValueChange = { 
+                maxLines = it
+                it.toIntOrNull()?.let { num -> viewModel.updateSettings(settings.copy(maxHistoryLines = num)) }
+            }, 
+            label = { Text("Max History Lines per Channel") }, 
+            modifier = Modifier.fillMaxWidth()
+        )
+        
+        var expandedPath by remember { mutableStateOf(false) }
+        Box(modifier = Modifier.padding(top = 8.dp)) {
+            OutlinedButton(onClick = { expandedPath = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("Log Storage: ${settings.logStoragePath.uppercase()}")
+            }
+            DropdownMenu(expanded = expandedPath, onDismissRequest = { expandedPath = false }) {
+                DropdownMenuItem(text = { Text("Internal (App Cache)") }, onClick = {
+                    viewModel.updateSettings(settings.copy(logStoragePath = "internal"))
+                    expandedPath = false
+                })
+                DropdownMenuItem(text = { Text("External (Documents/FenixLogs)") }, onClick = {
+                    viewModel.updateSettings(settings.copy(logStoragePath = "external"))
+                    expandedPath = false
+                })
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
         Text(Localizer.getString("away_messages", lang), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         var awayMsg by remember { mutableStateOf(settings.defaultAwayMessage) }
         OutlinedTextField(value = awayMsg, onValueChange = { awayMsg = it; viewModel.updateSettings(settings.copy(defaultAwayMessage = it)) }, label = { Text(Localizer.getString("default_away", lang)) }, modifier = Modifier.fillMaxWidth())

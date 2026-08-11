@@ -328,14 +328,29 @@ class ChatsViewModel(
     fun clearUnreadCount(serverId: Long, target: String) {
         ircManager.setCurrentlyViewing(serverId, target)
         viewModelScope.launch {
-            val channel = repository.getChannel(serverId, target)
             val now = System.currentTimeMillis()
+            if (target == "Status") {
+                val statusChannel = repository.getChannel(serverId, "Status")
+                if (statusChannel != null) {
+                    repository.updateChannel(statusChannel.copy(unreadCount = 0, lastVisited = now))
+                } else {
+                    repository.insertChannel(ChannelEntity(serverId = serverId, name = "Status", unreadCount = 0, lastVisited = now, isJoined = true))
+                }
+                return@launch
+            }
+
+            val channel = repository.getChannel(serverId, target)
             if (channel != null) {
                 repository.updateChannel(channel.copy(unreadCount = 0, lastVisited = now))
+                // Also reset user unread if it's a private chat with same name (clean up)
+                if (!isChannel(target)) {
+                    val user = repository.getUser(target, serverId)
+                    if (user != null) repository.insertUser(user.copy(unreadCount = 0, lastVisited = now))
+                }
             } else {
                 val user = repository.getUser(target, serverId)
                 if (user != null) {
-                    repository.insertUser(user.copy(lastVisited = now))
+                    repository.insertUser(user.copy(unreadCount = 0, lastVisited = now))
                 }
             }
         }
@@ -397,19 +412,9 @@ class ChatsViewModel(
         return results
     }
 
-    val totalChannelUsersCount: StateFlow<Int> = ircManager.globalStatuses
-        .flatMapLatest { statuses ->
-            val engineFlows = statuses.keys.mapNotNull { ircManager.getEngine(it)?.channelUsers }
-            if (engineFlows.isEmpty()) flowOf(0)
-            else combine(engineFlows) { userMaps ->
-                var total = 0
-                userMaps.forEach { map ->
-                    map.values.forEach { total += it.size }
-                }
-                total
-            }
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val totalChannelUsersCount: StateFlow<Int> = activeChannels.map { targets ->
+        targets.sumOf { it.unreadCount ?: 0 }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     fun onLeaveChat(serverId: Long) {
         ircManager.setCurrentlyViewing(serverId, null)
@@ -424,20 +429,21 @@ class ChatsViewModel(
                 engine?.send("PART $target :${settings.defaultPartMessage}")
             }
             
-            // For channels: clear unread and status
+            // Delete history and reset visits so it disappears from the list
+            repository.clearHistory(serverId, target)
+            
+            // Clean up BOTH tables to ensure it disappears (due to previous phantom record bug)
             if (channel != null) {
-                repository.updateChannel(channel.copy(unreadCount = 0, isJoined = false, lastVisited = 0))
-                if (!channel.saveLog) {
-                    repository.clearHistory(serverId, target)
+                if (!channel.saveLog || !isChannel(target)) {
                     repository.deleteChannel(channel)
+                } else {
+                    repository.updateChannel(channel.copy(unreadCount = 0, isJoined = false, lastVisited = 0))
                 }
-            } else {
-                // For private chats (users)
-                val user = repository.getUser(target, serverId)
-                if (user != null) {
-                    repository.insertUser(user.copy(lastVisited = 0)) // Reset visibility
-                    repository.clearHistory(serverId, target)
-                }
+            }
+            
+            val user = repository.getUser(target, serverId)
+            if (user != null) {
+                repository.insertUser(user.copy(lastVisited = 0, unreadCount = 0))
             }
         }
     }

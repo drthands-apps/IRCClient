@@ -17,7 +17,7 @@ import com.personal.ircclient.data.local.entities.*
         ScriptEntity::class,
         RadioStationEntity::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
