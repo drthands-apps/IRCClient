@@ -14,9 +14,10 @@ import com.personal.ircclient.data.local.entities.*
         ChannelDiscoveryEntity::class,
         SettingsEntity::class,
         AsciiArtEntity::class,
-        ScriptEntity::class
+        ScriptEntity::class,
+        RadioStationEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -28,4 +29,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun settingsDao(): SettingsDao
     abstract fun asciiArtDao(): AsciiArtDao
     abstract fun scriptDao(): ScriptDao
+    abstract fun radioStationDao(): RadioStationDao
 }

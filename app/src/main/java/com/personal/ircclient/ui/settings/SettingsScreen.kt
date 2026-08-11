@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.personal.ircclient.BuildConfig
 import com.personal.ircclient.core.utils.Localizer
@@ -35,7 +36,7 @@ fun SettingsScreen(
     val lang = settings.language
     var showColorPickerBy by remember { mutableStateOf<String?>(null) }
     var selectedCategory by remember { mutableStateOf("Appearance") }
-    val isPro = BuildConfig.FLAVOR == "pro"
+    val isPro = com.personal.ircclient.BuildConfig.FLAVOR == "pro"
 
     val categories = mutableListOf(
         "Appearance" to Icons.Default.Palette,
@@ -58,7 +59,7 @@ fun SettingsScreen(
         "Radio" to Localizer.getString("radio", lang),
         "Connectivity" to Localizer.getString("connectivity", lang),
         "ASCII & Phrases" to Localizer.getString("ascii_phrases", lang),
-        "Scripts" to "Scripts",
+        "Scripts" to Localizer.getString("scripts", lang),
         "About" to Localizer.getString("about", lang)
     )
 
@@ -128,6 +129,84 @@ fun SettingsScreen(
 }
 
 @Composable
+fun RadioSettings(
+    settings: com.personal.ircclient.data.local.entities.SettingsEntity,
+    viewModel: ChatsViewModel
+) {
+    val lang = settings.language
+    val stations by viewModel.allRadioStations.collectAsState()
+    var showAddDialog by remember { mutableStateOf(false) }
+
+    Column {
+        SecurityToggleItem(Localizer.getString("enable_radio", lang), "Show player in rooms", settings.isRadioPluginEnabled) {
+            viewModel.updateSettings(settings.copy(isRadioPluginEnabled = it))
+        }
+
+        if (settings.isRadioPluginEnabled) {
+            var expandedRadio by remember { mutableStateOf(false) }
+            Box(modifier = Modifier.padding(vertical = 8.dp)) {
+                OutlinedButton(onClick = { expandedRadio = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("${Localizer.getString("station", lang)}: ${settings.selectedRadioName}")
+                }
+                DropdownMenu(expanded = expandedRadio, onDismissRequest = { expandedRadio = false }) {
+                    stations.forEach { station ->
+                        DropdownMenuItem(
+                            text = { 
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                    Text(station.name)
+                                    if (!station.isDefault) {
+                                        IconButton(onClick = { viewModel.deleteRadioStation(station) }) {
+                                            Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                }
+                            }, 
+                            onClick = {
+                                viewModel.updateSettings(settings.copy(selectedRadioName = station.name, selectedRadioUrl = station.url))
+                                expandedRadio = false
+                            }
+                        )
+                    }
+                }
+            }
+            
+            Button(onClick = { showAddDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Add, null)
+                Spacer(Modifier.width(8.dp))
+                Text(Localizer.getString("add_station", lang))
+            }
+        }
+    }
+
+    if (showAddDialog) {
+        var name by remember { mutableStateOf("") }
+        var url by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            title = { Text(Localizer.getString("add_station", lang)) },
+            text = {
+                Column {
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(Localizer.getString("station", lang)) })
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(value = url, onValueChange = { url = it }, label = { Text(Localizer.getString("station_url", lang)) })
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (name.isNotBlank() && url.isNotBlank()) {
+                        viewModel.insertRadioStation(name, url)
+                        showAddDialog = false
+                    }
+                }) { Text(Localizer.getString("save", lang)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddDialog = false }) { Text(Localizer.getString("cancel", lang)) }
+            }
+        )
+    }
+}
+
+@Composable
 fun ScriptsSettings(viewModel: ChatsViewModel, lang: String) {
     val scripts by viewModel.allScripts.collectAsState()
     var showAddDialog by remember { mutableStateOf<com.personal.ircclient.data.local.entities.ScriptEntity?>(null) }
@@ -144,7 +223,7 @@ fun ScriptsSettings(viewModel: ChatsViewModel, lang: String) {
         Spacer(Modifier.height(16.dp))
 
         if (scripts.isEmpty()) {
-            Text("No scripts created yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+            Text(Localizer.getString("no_scripts", lang), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
         } else {
             scripts.forEach { script ->
                 Card(
@@ -183,29 +262,29 @@ fun ScriptsSettings(viewModel: ChatsViewModel, lang: String) {
 
         AlertDialog(
             onDismissRequest = { showAddDialog = null },
-            title = { Text(if (showAddDialog!!.id == 0L) "New Script" else "Edit Script") },
+            title = { Text(if (showAddDialog!!.id == 0L) Localizer.getString("add_new", lang) else Localizer.getString("edit", lang)) },
             text = {
                 Column {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Script Name") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(Localizer.getString("script_name", lang)) }, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
                     
-                    Text("Trigger Type:", style = MaterialTheme.typography.labelSmall)
+                    Text(Localizer.getString("trigger_type", lang), style = MaterialTheme.typography.labelSmall)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = trigger == "OUTGOING", onClick = { trigger = "OUTGOING" })
-                        Text("Outgoing (Aliases)", style = MaterialTheme.typography.bodySmall)
+                        Text(Localizer.getString("trigger_outgoing", lang), style = MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.width(8.dp))
                         RadioButton(selected = trigger == "INCOMING", onClick = { trigger = "INCOMING" })
-                        Text("Incoming", style = MaterialTheme.typography.bodySmall)
+                        Text(Localizer.getString("trigger_incoming", lang), style = MaterialTheme.typography.bodySmall)
                     }
 
                     OutlinedTextField(
                         value = content, 
                         onValueChange = { content = it }, 
-                        label = { Text("Script Logic") }, 
+                        label = { Text(Localizer.getString("script_logic", lang)) }, 
                         placeholder = { Text("OUT: /hello -> PRIVMSG %T :Hi!") },
                         modifier = Modifier.fillMaxWidth().height(200.dp)
                     )
-                    Text("Support: OUT: /alias -> Replacement", style = MaterialTheme.typography.labelSmall)
+                    Text(Localizer.getString("script_support", lang), style = MaterialTheme.typography.labelSmall)
                 }
             },
             confirmButton = {
@@ -277,51 +356,6 @@ fun AppearanceSettings(
 }
 
 @Composable
-fun RadioSettings(
-    settings: com.personal.ircclient.data.local.entities.SettingsEntity,
-    viewModel: ChatsViewModel
-) {
-    val lang = settings.language
-    val radios = listOf(
-        "Distrito Sonoro" to "https://stream.zeno.fm/afd3qhkxz08uv",
-        "Mundo Musica" to "https://stream.radio-amistad.net:8002/stream",
-        "Slay Radio" to "http://slayradio.org:8000/",
-        "Kohina" to "http://streaming.kohina.com:8000/stream",
-        "Nectarine" to "https://scenestream.net/demovibes/nectarine.mp3",
-        "Groove Salad" to "https://ice6.somafm.com/groovesalad-256-mp3",
-        "DEF CON Radio" to "https://ice6.somafm.com/defcon-256-mp3",
-        "Radio Paradise" to "https://stream.radioparadise.com/mp3-192",
-        "Chilltrax" to "https://ice1.somafm.com/chilltrax-128-mp3",
-        "BassDrive" to "http://bassdrive.com:8000/",
-        "Deep Space One" to "https://ice6.somafm.com/deepspaceone-128-mp3",
-        "Drone Zone" to "https://ice6.somafm.com/dronezone-128-mp3"
-    )
-
-    Column {
-        SecurityToggleItem(Localizer.getString("enable_radio", lang), "Show player in rooms", settings.isRadioPluginEnabled) {
-            viewModel.updateSettings(settings.copy(isRadioPluginEnabled = it))
-        }
-
-        if (settings.isRadioPluginEnabled) {
-            var expandedRadio by remember { mutableStateOf(false) }
-            Box(modifier = Modifier.padding(vertical = 8.dp)) {
-                OutlinedButton(onClick = { expandedRadio = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text("${Localizer.getString("station", lang)}: ${settings.selectedRadioName}")
-                }
-                DropdownMenu(expanded = expandedRadio, onDismissRequest = { expandedRadio = false }) {
-                    radios.forEach { (name, url) ->
-                        DropdownMenuItem(text = { Text(name) }, onClick = {
-                            viewModel.updateSettings(settings.copy(selectedRadioName = name, selectedRadioUrl = url))
-                            expandedRadio = false
-                        })
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 fun SecuritySettings(
     settings: com.personal.ircclient.data.local.entities.SettingsEntity,
     viewModel: ChatsViewModel,
@@ -329,6 +363,21 @@ fun SecuritySettings(
 ) {
     val lang = settings.language
     Column {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
+        ) {
+            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.VerifiedUser, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = Localizer.getString("privacy_policy_short", lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
         SettingsItem(Localizer.getString("friend_list", lang), "Friends & Ignored", Icons.Default.People, onNavigateToUserLists)
         SecurityToggleItem(Localizer.getString("only_friends_pv", lang), "Block stranger PMs", settings.allowPrivateOnlyFromFriends) {
             viewModel.updateSettings(settings.copy(allowPrivateOnlyFromFriends = it))
@@ -350,6 +399,14 @@ fun SecuritySettings(
         OutlinedTextField(value = awayMsg, onValueChange = { awayMsg = it; viewModel.updateSettings(settings.copy(defaultAwayMessage = it)) }, label = { Text(Localizer.getString("default_away", lang)) }, modifier = Modifier.fillMaxWidth())
         var backMsg by remember { mutableStateOf(settings.defaultBackMessage) }
         OutlinedTextField(value = backMsg, onValueChange = { backMsg = it; viewModel.updateSettings(settings.copy(defaultBackMessage = it)) }, label = { Text(Localizer.getString("default_back", lang)) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+        
+        Spacer(Modifier.height(16.dp))
+        Text("Exit Messages", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        var quitMsg by remember { mutableStateOf(settings.defaultQuitMessage) }
+        OutlinedTextField(value = quitMsg, onValueChange = { quitMsg = it; viewModel.updateSettings(settings.copy(defaultQuitMessage = it)) }, label = { Text("Default Quit Message") }, modifier = Modifier.fillMaxWidth())
+        var partMsg by remember { mutableStateOf(settings.defaultPartMessage) }
+        OutlinedTextField(value = partMsg, onValueChange = { partMsg = it; viewModel.updateSettings(settings.copy(defaultPartMessage = it)) }, label = { Text("Default Part Message") }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+
         var userAgent by remember { mutableStateOf(settings.customUserAgent) }
         OutlinedTextField(value = userAgent, onValueChange = { userAgent = it; viewModel.updateSettings(settings.copy(customUserAgent = it)) }, label = { Text(Localizer.getString("user_agent", lang)) }, modifier = Modifier.fillMaxWidth().padding(top = 16.dp))
     }
@@ -407,15 +464,34 @@ fun AboutSettings(context: android.content.Context, lang: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Default.LogoDev, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
         Text("FenixIRC", style = MaterialTheme.typography.headlineMedium)
-        Text("${Localizer.getString("version", lang)} 0.2 (Alpha)", style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.height(32.dp))
-        Button(onClick = { /* Check updates */ }) { Text(Localizer.getString("check_updates", lang)) }
-        Spacer(Modifier.height(16.dp))
-        OutlinedButton(onClick = { (context as? Activity)?.finish() }) {
-            Icon(Icons.AutoMirrored.Filled.ExitToApp, null)
-            Spacer(Modifier.width(8.dp))
-            Text(Localizer.getString("exit_app", lang))
+        Text("${Localizer.getString("version", lang)} 0.5 (Alpha)", style = MaterialTheme.typography.bodyMedium)
+        
+        Card(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = Localizer.getString("privacy_policy_title", lang),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = Localizer.getString("privacy_policy_desc", lang),
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = Localizer.getString("privacy_policy_short", lang),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
+
+        Spacer(Modifier.height(16.dp))
+        Button(onClick = { /* Check updates */ }) { Text(Localizer.getString("check_updates", lang)) }
     }
 }
 

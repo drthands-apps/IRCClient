@@ -119,6 +119,7 @@ fun ServersScreen(
                     onEdit = { onEditServerClick(server.id) },
                     onDelete = { serverToDelete = server },
                     onJoinChannel = { viewModel.joinChannel(server.id, it) },
+                    onCloseChannel = { channelName -> chatsViewModel.closeChat(server.id, channelName) },
                     onChannelClick = { onChannelClick(server.id, it) },
                     onDiscoverClick = { onChannelClick(server.id, "DISCOVERY") }
                 )
@@ -139,10 +140,18 @@ fun ServerItem(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onJoinChannel: (String) -> Unit,
+    onCloseChannel: (String) -> Unit,
     onChannelClick: (String) -> Unit,
     onDiscoverClick: () -> Unit
 ) {
     val isActive = status != IrcEngine.ConnectionStatus.DISCONNECTED
+    val statusColor = when(status) {
+        IrcEngine.ConnectionStatus.REGISTERED -> Color.Green
+        IrcEngine.ConnectionStatus.CONNECTED, IrcEngine.ConnectionStatus.REGISTERING -> Color.Cyan
+        IrcEngine.ConnectionStatus.CONNECTING -> Color.Yellow
+        IrcEngine.ConnectionStatus.ERROR -> Color.Red
+        else -> Color.Gray
+    }
     var expanded by remember { mutableStateOf(false) }
     var showServerMenu by remember { mutableStateOf(false) }
 
@@ -171,23 +180,19 @@ fun ServerItem(
                         Text(
                             text = Localizer.getString(statusKey, lang),
                             style = MaterialTheme.typography.labelSmall,
-                            color = when(status) {
-                                IrcEngine.ConnectionStatus.REGISTERED -> Color.Green
-                                IrcEngine.ConnectionStatus.CONNECTED, IrcEngine.ConnectionStatus.REGISTERING -> Color.Cyan
-                                IrcEngine.ConnectionStatus.CONNECTING -> Color.Yellow
-                                IrcEngine.ConnectionStatus.ERROR -> Color.Red
-                                else -> Color.Gray
-                            }
+                            color = statusColor
                         )
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         IconButton(onClick = if (isActive) onDisconnect else onConnect, modifier = Modifier.size(28.dp)) {
                             Icon(
-                                imageVector = if (isActive) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                                imageVector = if (status == IrcEngine.ConnectionStatus.REGISTERED) Icons.Default.CloudDone else Icons.Default.CloudOff,
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp),
-                                tint = if (isActive) Color.Green else Color.Gray
+                                tint = if (status == IrcEngine.ConnectionStatus.REGISTERED) Color.Green 
+                                       else if (isActive) statusColor
+                                       else Color.Gray
                             )
                         }
                         IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
@@ -233,15 +238,43 @@ fun ServerItem(
                         }
                     }
                     channels.forEach { channel ->
+                        var showConfirmClose by remember { mutableStateOf(false) }
                         val dismissState = rememberSwipeToDismissBoxState(
                             confirmValueChange = {
                                 if (it == SwipeToDismissBoxValue.EndToStart) {
-                                    onJoinChannel("/PART ${channel.name}")
-                                    true
+                                    showConfirmClose = true
+                                    false // Don't dismiss automatically, wait for dialog
                                 } else false
                             }
                         )
                         var showChannelMenu by remember { mutableStateOf(false) }
+                        val scope = rememberCoroutineScope()
+
+                        if (showConfirmClose) {
+                            AlertDialog(
+                                onDismissRequest = { 
+                                    showConfirmClose = false
+                                    scope.launch { dismissState.reset() }
+                                },
+                                title = { Text(Localizer.getString("clear_history", lang)) },
+                                text = { Text("${Localizer.getString("clear_history_confirm", lang)} (${channel.name})") },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                            onCloseChannel(channel.name)
+                                            showConfirmClose = false
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                                    ) { Text(Localizer.getString("delete", lang)) }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { 
+                                        showConfirmClose = false
+                                        scope.launch { dismissState.reset() }
+                                    }) { Text(Localizer.getString("cancel", lang)) }
+                                }
+                            )
+                        }
                         
                         SwipeToDismissBox(
                             state = dismissState,

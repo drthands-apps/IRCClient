@@ -1,6 +1,5 @@
 package com.personal.ircclient.core
 
-import com.personal.ircclient.BuildConfig
 import com.personal.ircclient.core.commands.CommandHandler
 import com.personal.ircclient.core.model.IrcConfig
 import com.personal.ircclient.core.model.IrcMessage
@@ -944,10 +943,14 @@ class IrcEngine(
         }
     }
 
-    fun disconnect() {
+    fun disconnect(quitMessage: String? = null) {
         heartbeatJob?.cancel()
         scope.launch {
             try {
+                if (quitMessage != null && socket?.isConnected == true) {
+                    send("QUIT :$quitMessage")
+                    delay(500) // Give it a moment to send
+                }
                 socket?.close()
                 reader?.close()
                 writer?.close()

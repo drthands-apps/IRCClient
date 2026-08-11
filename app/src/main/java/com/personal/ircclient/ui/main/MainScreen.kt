@@ -157,6 +157,51 @@ fun MainScreen() {
                         title = { Text(title) },
                         actions = {
                             when (currentRoute) {
+                                Screen.Servers.route -> {
+                                    var showMenu by remember { mutableStateOf(false) }
+                                    Box {
+                                        IconButton(onClick = { showMenu = true }) {
+                                            Icon(Icons.Default.MoreVert, contentDescription = null)
+                                        }
+                                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                            DropdownMenuItem(
+                                                text = { Text(Localizer.getString("add_new", lang)) },
+                                                leadingIcon = { Icon(Icons.Default.Add, null) },
+                                                onClick = { 
+                                                    showMenu = false
+                                                    navController.navigate(Screen.AddServer.route) 
+                                                }
+                                            )
+                                            HorizontalDivider()
+                                            DropdownMenuItem(
+                                                text = { Text(Localizer.getString("connect_all", lang)) },
+                                                leadingIcon = { Icon(Icons.Default.CloudDone, null) },
+                                                onClick = { 
+                                                    showMenu = false
+                                                    serversViewModel.servers.value.forEach { serversViewModel.connectServer(it) }
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text(Localizer.getString("disconnect_all", lang)) },
+                                                leadingIcon = { Icon(Icons.Default.CloudOff, null) },
+                                                onClick = { 
+                                                    showMenu = false
+                                                    chatsViewModel.disconnectAll()
+                                                }
+                                            )
+                                            HorizontalDivider()
+                                            DropdownMenuItem(
+                                                text = { Text(Localizer.getString("exit_app", lang)) },
+                                                leadingIcon = { Icon(Icons.Default.ExitToApp, null) },
+                                                onClick = { 
+                                                    showMenu = false
+                                                    chatsViewModel.disconnectAll()
+                                                    (context as? android.app.Activity)?.finish()
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
                                 Screen.Channels.route -> {
                                     var showMenu by remember { mutableStateOf(false) }
                                     val activeServers by serversViewModel.activeServerIds.collectAsState()
@@ -260,43 +305,7 @@ fun MainScreen() {
                 }
             },
             floatingActionButton = {
-                when (currentRoute) {
-                    Screen.Servers.route -> {
-                        var showMenu by remember { mutableStateOf(false) }
-                        Box {
-                            FloatingActionButton(onClick = { showMenu = true }) {
-                                Icon(Icons.Default.Dns, contentDescription = null)
-                            }
-                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                                DropdownMenuItem(
-                                    text = { Text(Localizer.getString("add_new", lang)) },
-                                    leadingIcon = { Icon(Icons.Default.Add, null) },
-                                    onClick = { 
-                                        showMenu = false
-                                        navController.navigate(Screen.AddServer.route) 
-                                    }
-                                )
-                                HorizontalDivider()
-                                DropdownMenuItem(
-                                    text = { Text(Localizer.getString("connect_all", lang)) },
-                                    leadingIcon = { Icon(Icons.Default.CloudDone, null) },
-                                    onClick = { 
-                                        showMenu = false
-                                        serversViewModel.servers.value.forEach { serversViewModel.connectServer(it) }
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(Localizer.getString("disconnect_all", lang)) },
-                                    leadingIcon = { Icon(Icons.Default.CloudOff, null) },
-                                    onClick = { 
-                                        showMenu = false
-                                        chatsViewModel.disconnectAll()
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
+                // FAB moved to Header menu for aesthetic homogeneity
             }
         ) { innerPadding ->
             NavHost(

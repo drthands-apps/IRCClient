@@ -174,7 +174,10 @@ class ChatsViewModel(
     }
 
     fun disconnectAll() {
-        ircManager.disconnectAll()
+        viewModelScope.launch {
+            val quitMsg = settingsState.value.defaultQuitMessage
+            ircManager.disconnectAll(quitMsg)
+        }
     }
 
     fun setSoundOnFriendJoin(enabled: Boolean) {
@@ -255,6 +258,22 @@ class ChatsViewModel(
         }
     }
 
+    // Radio Stations
+    val allRadioStations: StateFlow<List<RadioStationEntity>> = repository.allRadioStations
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun insertRadioStation(name: String, url: String) {
+        viewModelScope.launch {
+            repository.insertRadioStation(RadioStationEntity(name = name, url = url))
+        }
+    }
+
+    fun deleteRadioStation(station: RadioStationEntity) {
+        viewModelScope.launch {
+            repository.deleteRadioStation(station)
+        }
+    }
+
     fun sendAsciiArt(serverId: Long, target: String, item: AsciiArtEntity) {
         viewModelScope.launch {
             val lines = item.content.split("\n")
@@ -315,15 +334,17 @@ class ChatsViewModel(
     fun closeChat(serverId: Long, target: String) {
         viewModelScope.launch {
             val channel = repository.getChannel(serverId, target)
+            val settings = settingsState.value
             if (channel != null && channel.isJoined) {
                 val engine = ircManager.getEngine(serverId)
-                engine?.send("PART $target")
+                engine?.send("PART $target :${settings.defaultPartMessage}")
             }
             if (channel == null || !channel.saveLog) {
                 repository.clearHistory(serverId, target)
             }
             if (channel != null) {
                  repository.updateChannel(channel.copy(unreadCount = 0, isJoined = false))
+                 repository.deleteChannel(channel)
             }
         }
     }

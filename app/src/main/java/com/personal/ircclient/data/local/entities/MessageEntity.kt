@@ -31,5 +31,5 @@ data class MessageEntity(
 )
 
 enum class MessageType {
-    TEXT, IMAGE, VOICE, JOIN, PART, QUIT, KICK, BAN, NICK, TOPIC, NOTICE
+    TEXT, IMAGE, VOICE, FILE, JOIN, PART, QUIT, KICK, BAN, NICK, TOPIC, NOTICE
 }

@@ -51,6 +51,8 @@ data class SettingsEntity(
     val autoResponseForBlockedPv: String = "I only accept private messages from friends.",
     val defaultAwayMessage: String = "I am away from my keyboard.",
     val defaultBackMessage: String = "I am back.",
+    val defaultQuitMessage: String = "FenixIRC - The next generation IRC Client",
+    val defaultPartMessage: String = "Leaving channel",
     
     // Internationalization
     val language: String = "en", // en, es, fr, de, pt, zh

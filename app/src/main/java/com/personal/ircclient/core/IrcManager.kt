@@ -111,8 +111,8 @@ class IrcManager(private val context: Context, private val repository: IrcReposi
         return engine
     }
 
-    fun disconnect(serverId: Long) {
-        connections[serverId]?.disconnect()
+    fun disconnect(serverId: Long, quitMessage: String? = null) {
+        connections[serverId]?.disconnect(quitMessage)
         connections.remove(serverId)
         _activeServers.value = connections.keys.toSet()
         
@@ -132,8 +132,8 @@ class IrcManager(private val context: Context, private val repository: IrcReposi
         connections[serverId]?.currentlyViewingTarget = target
     }
     
-    fun disconnectAll() {
-        connections.values.forEach { it.disconnect() }
+    fun disconnectAll(quitMessage: String? = null) {
+        connections.values.forEach { it.disconnect(quitMessage) }
         connections.clear()
         _activeServers.value = emptySet()
     }

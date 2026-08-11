@@ -103,7 +103,7 @@ fun ChatDetailScreen(
     val isStatus = target == "Status"
     val isChannel = target.startsWith("#")
     val isUser = !isStatus && !isChannel
-    val isPro = BuildConfig.FLAVOR == "pro"
+    val isPro = com.personal.ircclient.BuildConfig.FLAVOR == "pro"
     
     val contextAndroid = androidx.compose.ui.platform.LocalContext.current
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
@@ -351,6 +351,35 @@ fun ChatDetailScreen(
                 FileUploader.uploadFile(tempFile) { url ->
                     if (url != null) {
                         mediaToSend = MessageType.VOICE to url
+                        showTtlDialog = true
+                    }
+                }
+            }
+        }
+    }
+
+    val fileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            val cursor = contextAndroid.contentResolver.query(it, null, null, null, null)
+            val nameIndex = cursor?.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            cursor?.moveToFirst()
+            val fileName = cursor?.getString(nameIndex ?: -1) ?: "file_${System.currentTimeMillis()}"
+            cursor?.close()
+
+            val inputStream = contextAndroid.contentResolver.openInputStream(it)
+            val bytes = inputStream?.readBytes() ?: return@let
+            
+            if (isUser && isPro) {
+                val tempFile = java.io.File(contextAndroid.cacheDir, fileName)
+                val fos = java.io.FileOutputStream(tempFile)
+                fos.write(bytes)
+                fos.close()
+                
+                FileUploader.uploadFile(tempFile) { url ->
+                    if (url != null) {
+                        mediaToSend = MessageType.FILE to url
                         showTtlDialog = true
                     }
                 }
@@ -630,7 +659,41 @@ fun ChatDetailScreen(
                         }
                     },
                     actions = {
-                        if (!isStatus) {
+                        if (isStatus) {
+                            var showStatusActions by remember { mutableStateOf(false) }
+                            Box {
+                                IconButton(onClick = { showStatusActions = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = null)
+                                }
+                                DropdownMenu(expanded = showStatusActions, onDismissRequest = { showStatusActions = false }) {
+                                    val statusCommands = listOf(
+                                        "LIST" to Localizer.getString("discover", lang),
+                                        "LUSERS" to "List Users",
+                                        "MOTD" to "MOTD",
+                                        "INFO" to "Server Info",
+                                        "ADMIN" to "Admin Info",
+                                        "LINKS" to "Server Links",
+                                        "PING" to "Ping Server",
+                                        "HELP" to "Help"
+                                    )
+                                    statusCommands.forEach { (cmd, label) ->
+                                        DropdownMenuItem(
+                                            text = { Text(label) },
+                                            onClick = {
+                                                showStatusActions = false
+                                                if (cmd == "LIST") onNavigateToDiscovery(serverId)
+                                                else handleSend("/$cmd")
+                                            }
+                                        )
+                                    }
+                                    HorizontalDivider()
+                                    DropdownMenuItem(
+                                        text = { Text(Localizer.getString("clear_history", lang)) },
+                                        onClick = { showStatusActions = false; showClearConfirm = true }
+                                    )
+                                }
+                            }
+                        } else if (!isStatus) {
                             if (isChannel) {
                                 IconButton(onClick = { scope.launch { drawerState.open() } }) {
                                     Icon(Icons.Default.People, contentDescription = null)
@@ -750,9 +813,9 @@ fun ChatDetailScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Secure chat requested", style = MaterialTheme.typography.bodyMedium)
+                                Text(Localizer.getString("secure_requested", lang), style = MaterialTheme.typography.bodyMedium)
                                 Button(onClick = { viewModel.acceptSecureChat(serverId, target) }) {
-                                    Text("Accept & Generate Key")
+                                    Text(Localizer.getString("accept_generate_key", lang))
                                 }
                             }
                         }
@@ -767,25 +830,9 @@ fun ChatDetailScreen(
                             ) {
                                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                                 Spacer(Modifier.width(12.dp))
-                                Text("Waiting for user to accept secure chat...", style = MaterialTheme.typography.bodyMedium)
+                                Text(Localizer.getString("waiting_secure_accept", lang), style = MaterialTheme.typography.bodyMedium)
                             }
                         }
-                    }
-
-                    if (isStatus) {
-                        StatusQuickActions(
-                            currentText = textFieldValue.text,
-                            onTextChange = { txt ->
-                                textFieldValue = TextFieldValue(txt, TextRange(txt.length))
-                            },
-                            onAction = { cmd -> 
-                                if (cmd == "/LIST") {
-                                    onNavigateToDiscovery(serverId)
-                                } else {
-                                    handleSend(cmd)
-                                }
-                            }
-                        )
                     }
 
                     if (showFormattingTools) {
@@ -809,7 +856,7 @@ fun ChatDetailScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(8.dp),
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (!isStatus) {
@@ -842,8 +889,8 @@ fun ChatDetailScreen(
                                 onValueChange = { textFieldValue = it },
                                 modifier = Modifier.fillMaxWidth(),
                                 placeholder = { Text(if (isStatus) Localizer.getString("enter_command", lang) else Localizer.getString("typing_message", lang)) },
-                                leadingIcon = {
-                                    if (!isStatus && !isChannel && isPro) {
+                                leadingIcon = if (!isStatus && !isChannel && isPro) {
+                                    {
                                         Box {
                                             IconButton(onClick = { showAttachMenu = true }) {
                                                 Icon(Icons.Default.Add, contentDescription = null)
@@ -859,10 +906,15 @@ fun ChatDetailScreen(
                                                     leadingIcon = { Icon(Icons.Default.AudioFile, null) },
                                                     onClick = { showAttachMenu = false; audioLauncher.launch("audio/*") }
                                                 )
+                                                DropdownMenuItem(
+                                                    text = { Text(Localizer.getString("attach_file", lang)) },
+                                                    leadingIcon = { Icon(Icons.Default.AttachFile, null) },
+                                                    onClick = { showAttachMenu = false; fileLauncher.launch("*/*") }
+                                                )
                                             }
                                         }
                                     }
-                                }
+                                } else null
                             )
 
                             if (showNickSuggestions) {
@@ -924,78 +976,80 @@ fun ChatDetailScreen(
                 }
             }
         ) { padding ->
-            Column(modifier = Modifier.padding(padding)) {
-                if (settings.isRadioPluginEnabled) {
-                    val streamUrl = settings.selectedRadioUrl
-                    val radioName = settings.selectedRadioName
-                    
-                    if (streamUrl.isNotEmpty()) {
-                        Card(
-                            modifier = Modifier.fillMaxWidth().padding(8.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                        ) {
-                            val isPlayingByPlayer by RadioPlayer.isPlaying.collectAsState()
-                            val currentUrlByPlayer by RadioPlayer.currentUrl.collectAsState()
-                            val isCurrentStation = currentUrlByPlayer == streamUrl && isPlayingByPlayer
-
-                            Row(
-                                modifier = Modifier.padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+            Box(modifier = Modifier.padding(padding)) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    if (settings.isRadioPluginEnabled) {
+                        val streamUrl = settings.selectedRadioUrl
+                        val radioName = settings.selectedRadioName
+                        
+                        if (streamUrl.isNotEmpty()) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                    Icon(
-                                        imageVector = if (isCurrentStation) Icons.Default.PauseCircle else Icons.Default.Radio, 
-                                        contentDescription = null,
-                                        tint = if (isCurrentStation) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSecondaryContainer
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        text = if (isCurrentStation) "Playing $radioName..." else "Radio: $radioName", 
-                                        style = MaterialTheme.typography.titleSmall,
-                                        maxLines = 1
-                                    )
-                                }
-                                Row {
-                                    IconButton(onClick = {
-                                        RadioPlayer.play(contextAndroid, streamUrl)
-                                    }) {
+                                val isPlaying by RadioPlayer.isPlaying.collectAsState()
+                                val currentUrl by RadioPlayer.currentUrl.collectAsState()
+                                val isCurrentStation = currentUrl == streamUrl && isPlaying
+
+                                Row(
+                                    modifier = Modifier.padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                         Icon(
-                                            imageVector = if (isCurrentStation) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                            contentDescription = null
+                                            imageVector = if (isCurrentStation) Icons.Default.PauseCircle else Icons.Default.Radio, 
+                                            contentDescription = null,
+                                            tint = if (isCurrentStation) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSecondaryContainer
                                         )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            text = if (isCurrentStation) "Playing $radioName..." else "Radio: $radioName", 
+                                            style = MaterialTheme.typography.titleSmall,
+                                            maxLines = 1
+                                        )
+                                    }
+                                    Row {
+                                        IconButton(onClick = {
+                                            RadioPlayer.play(contextAndroid, streamUrl)
+                                        }) {
+                                            Icon(
+                                                imageVector = if (isCurrentStation) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                                contentDescription = null
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    reverseLayout = true,
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp)
-                ) {
-                    items(messages) { msg ->
-                        val senderInfo = channelUsers.find { it.nickname == msg.sender }
-                        MessageBubble(
-                            msg = msg,
-                            serverId = serverId,
-                            myNick = myNick,
-                            amIOp = amIOp,
-                            isFriend = friends.contains(msg.sender),
-                            senderPrefix = senderInfo?.prefix ?: "",
-                            onAction = handleSend,
-                            onTextChange = { textFieldValue = it },
-                            viewModel = viewModel,
-                            settings = settings,
-                            onNavigateToChat = onNavigateToChat,
-                            contextAndroid = contextAndroid,
-                            senderInfo = senderInfo
-                        )
-                    }
-                    item {
-                        Spacer(modifier = Modifier.height(100.dp))
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        reverseLayout = true,
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp)
+                    ) {
+                        items(messages) { msg ->
+                            val senderInfo = channelUsers.find { it.nickname == msg.sender }
+                            MessageBubble(
+                                msg = msg,
+                                serverId = serverId,
+                                myNick = myNick,
+                                amIOp = amIOp,
+                                isFriend = friends.contains(msg.sender),
+                                senderPrefix = senderInfo?.prefix ?: "",
+                                onAction = handleSend,
+                                onTextChange = { textFieldValue = it },
+                                viewModel = viewModel,
+                                settings = settings,
+                                onNavigateToChat = onNavigateToChat,
+                                contextAndroid = contextAndroid,
+                                senderInfo = senderInfo
+                            )
+                        }
+                        item {
+                            Spacer(modifier = Modifier.height(100.dp))
+                        }
                     }
                 }
             }
@@ -1174,6 +1228,10 @@ fun MessageBubble(
                             Text(text = "${Localizer.getString("notice", lang)}: ${msg.sender}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.tertiary)
                         } else if (!isMe && !isStatus && !isSystem) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (msg.isEncrypted) {
+                                    Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color.Green)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
                                 Text(text = msg.sender, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                 if (isFriend) {
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -1181,7 +1239,13 @@ fun MessageBubble(
                                 }
                             }
                         } else if (isMe) {
-                            Text(text = myNick, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(settings.ownMessageColor))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (msg.isEncrypted) {
+                                    Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color.Green)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+                                Text(text = myNick, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(settings.ownMessageColor))
+                            }
                         }
                         
                         Text(
@@ -1390,6 +1454,20 @@ fun MessageBubble(
                             )
                             Text(if (isUrl) Localizer.getString("voice_message_ext", lang) else Localizer.getString("voice_message", lang), style = MaterialTheme.typography.bodySmall)
                         }
+                    } else if (msg.type == MessageType.FILE) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                            Icon(
+                                imageVector = Icons.Default.Description, 
+                                contentDescription = null,
+                                modifier = Modifier.clickable {
+                                    LinkHandler.openLink(contextAndroid, msg.text, settings)
+                                }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(Localizer.getString("file_message", lang), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable {
+                                LinkHandler.openLink(contextAndroid, msg.text, settings)
+                            })
+                        }
                     }
 
                     if (msg.isModifiedByScript) {
@@ -1458,7 +1536,7 @@ fun MessageBubble(
                     leadingIcon = { Icon(Icons.Default.ArtTrack, null) },
                     onClick = { 
                         showMenu = false
-                        onAction("/ART_SELECTOR ${msg.sender}")
+                        onAction("/ART_SELECTOR ${msg.sender}") 
                     }
                 )
                 HorizontalDivider()

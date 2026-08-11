@@ -3,6 +3,7 @@ package com.personal.ircclient.data.repository
 import com.personal.ircclient.data.local.dao.*
 import com.personal.ircclient.data.local.entities.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 
 class IrcRepository(
     private val serverDao: ServerDao,
@@ -12,8 +13,29 @@ class IrcRepository(
     private val channelDiscoveryDao: ChannelDiscoveryDao,
     private val settingsDao: SettingsDao,
     private val asciiArtDao: AsciiArtDao,
-    private val scriptDao: ScriptDao
+    private val scriptDao: ScriptDao,
+    private val radioStationDao: RadioStationDao
 ) {
+    // Radio Stations
+    val allRadioStations: Flow<List<RadioStationEntity>> = radioStationDao.getAll()
+    suspend fun insertRadioStation(station: RadioStationEntity) = radioStationDao.insert(station)
+    suspend fun deleteRadioStation(station: RadioStationEntity) = radioStationDao.delete(station)
+
+    suspend fun checkAndInsertDefaultRadioStations() {
+        if (radioStationDao.getCount() == 0L) {
+            val defaults = listOf(
+                RadioStationEntity(name = "Distrito Sonoro", url = "https://stream.zeno.fm/afd3qhkxz08uv", isDefault = true),
+                RadioStationEntity(name = "Mundo Musica", url = "https://stream.radio-amistad.net:8002/stream", isDefault = true),
+                RadioStationEntity(name = "Slay Radio", url = "http://slayradio.org:8000/", isDefault = true),
+                RadioStationEntity(name = "Radio Paradise", url = "https://stream.radioparadise.com/mp3-192", isDefault = true),
+                RadioStationEntity(name = "Groove Salad", url = "https://ice6.somafm.com/groovesalad-256-mp3", isDefault = true),
+                RadioStationEntity(name = "DEF CON Radio", url = "https://ice6.somafm.com/defcon-256-mp3", isDefault = true),
+                RadioStationEntity(name = "Deep Space One", url = "https://ice6.somafm.com/deepspaceone-128-mp3", isDefault = true),
+                RadioStationEntity(name = "Drone Zone", url = "https://ice6.somafm.com/dronezone-128-mp3", isDefault = true)
+            )
+            defaults.forEach { radioStationDao.insert(it) }
+        }
+    }
     // Settings
     val settings: Flow<SettingsEntity?> = settingsDao.getSettings()
     suspend fun updateSettings(settings: SettingsEntity) = settingsDao.updateSettings(settings)
@@ -90,16 +112,38 @@ class IrcRepository(
     suspend fun insertAsciiArt(item: AsciiArtEntity) {
         val count = asciiArtDao.getCount()
         if (count == 0L) {
-            insertDefaults()
+            insertDefaultAscii()
         }
         asciiArtDao.insert(item)
     }
 
-    private suspend fun insertDefaults() {
+    private suspend fun insertDefaultAscii() {
         asciiArtDao.insert(AsciiArtEntity(name = "Hello", content = "Hello everyone! \\u000303Welcome!\\u000f", isPhrase = true))
         asciiArtDao.insert(AsciiArtEntity(name = "Status", content = "\\u0002FenixIRC\\u000f \\u000302Connected\\u000f", isPhrase = true))
         asciiArtDao.insert(AsciiArtEntity(name = "Small Bird", content = "  \\\\\\n (o>\\n// )\\n V_/_", isPhrase = false))
     }
 
     suspend fun deleteAsciiArt(item: AsciiArtEntity) = asciiArtDao.delete(item)
+
+    // Script Defaults
+    suspend fun checkAndInsertDefaultScripts() {
+        val count = scriptDao.getAllScripts().first().size
+        if (count == 0) {
+            insertScript(ScriptEntity(
+                name = "Quick Greet",
+                content = "OUT: /hi -> PRIVMSG %T :Hello everyone! Greetings from %N.",
+                triggerType = "OUTGOING"
+            ))
+            insertScript(ScriptEntity(
+                name = "Private Msg Alias",
+                content = "OUT: /p -> PRIVMSG %A",
+                triggerType = "OUTGOING"
+            ))
+            insertScript(ScriptEntity(
+                name = "Slap Action",
+                content = "OUT: /slap -> PRIVMSG %T :\u0001ACTION slaps %A around a bit with a large trout\u0001",
+                triggerType = "OUTGOING"
+            ))
+        }
+    }
 }
