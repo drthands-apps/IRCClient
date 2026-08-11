@@ -28,5 +28,6 @@ data class ServerEntity(
     
     // Bouncer
     val useBouncer: Boolean = false,
-    val bouncerNetwork: String? = null
+    val bouncerNetwork: String? = null,
+    val lastConnected: Long = 0
 )

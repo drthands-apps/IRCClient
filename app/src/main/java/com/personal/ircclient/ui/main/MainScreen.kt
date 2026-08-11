@@ -174,11 +174,15 @@ fun MainScreen() {
                                             )
                                             HorizontalDivider()
                                             DropdownMenuItem(
-                                                text = { Text(Localizer.getString("connect_all", lang)) },
+                                                text = { Text(Localizer.getString("connect_recents", lang)) },
                                                 leadingIcon = { Icon(Icons.Default.CloudDone, null) },
                                                 onClick = { 
                                                     showMenu = false
-                                                    serversViewModel.servers.value.forEach { serversViewModel.connectServer(it) }
+                                                    val recents = serversViewModel.servers.value
+                                                        .filter { it.lastConnected > 0 }
+                                                        .sortedByDescending { it.lastConnected }
+                                                        .take(3)
+                                                    recents.forEach { serversViewModel.connectServer(it) }
                                                 }
                                             )
                                             DropdownMenuItem(

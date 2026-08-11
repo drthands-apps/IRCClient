@@ -82,6 +82,9 @@ class ServersViewModel(
     }
 
     fun connectServer(server: ServerEntity) {
+        viewModelScope.launch {
+            repository.updateServer(server.copy(lastConnected = System.currentTimeMillis()))
+        }
         val finalNickname = if (server.generateRandomNick) {
             NickGenerator.generate()
         } else server.nickname

@@ -34,6 +34,12 @@ fun ServersScreen(
 ) {
     val servers by viewModel.servers.collectAsState()
     val statuses by viewModel.connectionStatuses.collectAsState()
+    val sortedServers = remember(servers, statuses) {
+        servers.sortedWith(
+            compareByDescending<ServerEntity> { (statuses[it.id] ?: IrcEngine.ConnectionStatus.DISCONNECTED) != IrcEngine.ConnectionStatus.DISCONNECTED }
+                .thenByDescending { it.lastConnected }
+        )
+    }
     val settings by chatsViewModel.settingsState.collectAsState()
     val lang = settings.language
     val scope = rememberCoroutineScope()
@@ -65,65 +71,30 @@ fun ServersScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        if (servers.isEmpty()) {
+        if (sortedServers.isEmpty()) {
             item {
                 Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
                     Text(Localizer.getString("no_servers", lang))
                 }
             }
         }
-        items(servers, key = { it.id }) { server ->
+        items(sortedServers, key = { it.id }) { server ->
             val connectionStatus = statuses[server.id] ?: IrcEngine.ConnectionStatus.DISCONNECTED
             
-            val dismissState = rememberSwipeToDismissBoxState(
-                confirmValueChange = {
-                    if (it == SwipeToDismissBoxValue.EndToStart) {
-                        if (connectionStatus != IrcEngine.ConnectionStatus.DISCONNECTED) {
-                            viewModel.disconnectServer(server.id)
-                        }
-                        true
-                    } else false
-                }
+            ServerItem(
+                server = server,
+                status = connectionStatus,
+                channels = viewModel.getChannels(server.id).collectAsState(initial = emptyList()).value,
+                lang = lang,
+                onConnect = { viewModel.connectServer(server) },
+                onDisconnect = { viewModel.disconnectServer(server.id) },
+                onEdit = { onEditServerClick(server.id) },
+                onDelete = { serverToDelete = server },
+                onJoinChannel = { viewModel.joinChannel(server.id, it) },
+                onCloseChannel = { channelName -> chatsViewModel.closeChat(server.id, channelName) },
+                onChannelClick = { onChannelClick(server.id, it) },
+                onDiscoverClick = { onChannelClick(server.id, "DISCOVERY") }
             )
-
-            SwipeToDismissBox(
-                state = dismissState,
-                backgroundContent = {
-                    val color = when (dismissState.dismissDirection) {
-                        SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.errorContainer
-                        else -> Color.Transparent
-                    }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 20.dp)
-                            .background(color, shape = MaterialTheme.shapes.medium),
-                        contentAlignment = Alignment.CenterEnd
-                    ) {
-                        Icon(
-                            Icons.Default.CloudOff,
-                            contentDescription = Localizer.getString("disconnect", lang),
-                            tint = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                    }
-                },
-                enableDismissFromStartToEnd = false
-            ) {
-                ServerItem(
-                    server = server,
-                    status = connectionStatus,
-                    channels = viewModel.getChannels(server.id).collectAsState(initial = emptyList()).value,
-                    lang = lang,
-                    onConnect = { viewModel.connectServer(server) },
-                    onDisconnect = { viewModel.disconnectServer(server.id) },
-                    onEdit = { onEditServerClick(server.id) },
-                    onDelete = { serverToDelete = server },
-                    onJoinChannel = { viewModel.joinChannel(server.id, it) },
-                    onCloseChannel = { channelName -> chatsViewModel.closeChat(server.id, channelName) },
-                    onChannelClick = { onChannelClick(server.id, it) },
-                    onDiscoverClick = { onChannelClick(server.id, "DISCOVERY") }
-                )
-            }
         }
     }
 }
