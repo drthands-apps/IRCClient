@@ -575,6 +575,7 @@ fun ConnectivitySettings(
     viewModel: ChatsViewModel
 ) {
     val lang = settings.language
+    val context = LocalContext.current
     val searchEngines = mapOf(
         "Google" to "https://www.google.com/search?q=",
         "DuckDuckGo" to "https://duckduckgo.com/?q=",
@@ -588,7 +589,23 @@ fun ConnectivitySettings(
     )
 
     Column {
-        SecurityToggleItem(Localizer.getString("stay_persistent", lang), "Mantener conexión en segundo plano", settings.runInBackground) { viewModel.updateSettings(settings.copy(runInBackground = it)) }
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f))
+        ) {
+            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(Localizer.getString("resource_usage_warning", lang), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text(Localizer.getString("resource_usage_desc", lang), style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+
+        SecurityToggleItem(Localizer.getString("stay_persistent", lang), "Background connection (" + Localizer.getString("high_resource", lang) + ")", settings.runInBackground) { 
+            viewModel.updateSettings(settings.copy(runInBackground = it)) 
+        }
         var userAgent by remember { mutableStateOf(settings.customUserAgent) }
         OutlinedTextField(value = userAgent, onValueChange = { userAgent = it; viewModel.updateSettings(settings.copy(customUserAgent = it)) }, label = { Text(Localizer.getString("user_agent", lang)) }, modifier = Modifier.fillMaxWidth())
         

@@ -711,6 +711,18 @@ fun ChatDetailScreen(
                                     Icon(Icons.Default.MoreVert, contentDescription = null)
                                 }
                                 DropdownMenu(expanded = showMoreActions, onDismissRequest = { showMoreActions = false }) {
+                                    if (isChannel) {
+                                        DropdownMenuItem(
+                                            text = { Text("Send Art/Phrase") },
+                                            leadingIcon = { Icon(Icons.Default.ArtTrack, null) },
+                                            onClick = { 
+                                                showMoreActions = false
+                                                showAsciiSelector = target
+                                            }
+                                        )
+                                        HorizontalDivider()
+                                    }
+
                                     val availableCommands = viewModel.getAvailableCommands(serverId, target, amIOp)
                                     availableCommands.forEach { cmd ->
                                         if (cmd == "PART" || cmd == "QUIT") {

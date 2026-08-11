@@ -244,8 +244,11 @@ class IrcEngine(
     private fun startHeartbeat() {
         heartbeatJob = scope.launch {
             while (isActive) {
-                delay(60000) 
-                if (System.currentTimeMillis() - lastMessageTime > 300000) { // 5 mins leniency for background
+                // Adaptive PING: Use 120s in background, 60s in foreground
+                val delayTime = if (currentlyViewingTarget == null) 120000L else 60000L
+                delay(delayTime) 
+                
+                if (System.currentTimeMillis() - lastMessageTime > 300000) { // 5 mins leniency
                     logToStatus("Ping timeout. Disconnecting.")
                     _connectionStatus.value = ConnectionStatus.ERROR
                     disconnect()

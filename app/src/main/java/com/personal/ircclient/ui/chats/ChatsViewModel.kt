@@ -276,14 +276,18 @@ class ChatsViewModel(
 
     fun sendAsciiArt(serverId: Long, target: String, item: AsciiArtEntity) {
         viewModelScope.launch {
-            val lines = item.content.split("\n")
+            val lines = item.content.split("\\n", "\n")
             lines.forEach { line ->
-                if (line.isNotBlank()) {
+                // Use isNotEmpty instead of isNotBlank to allow space-only lines (common in ASCII)
+                if (line.isNotEmpty()) {
                     val parsedLine = line.replace("\\u0003", "\u0003")
                         .replace("\\u0002", "\u0002")
                         .replace("\\u001f", "\u001f")
                         .replace("\\u000f", "\u000f")
                     sendMessage(serverId, target, parsedLine)
+                } else {
+                    // Send a single space for empty lines to maintain formatting in some servers
+                    sendMessage(serverId, target, " ")
                 }
             }
         }
