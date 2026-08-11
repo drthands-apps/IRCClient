@@ -312,14 +312,39 @@ fun MainScreen() {
                                         }
                                         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                                             DropdownMenuItem(
+                                                text = { Text("Open Recents") },
+                                                leadingIcon = { Icon(Icons.Default.History, null) },
+                                                onClick = { 
+                                                    showMenu = false
+                                                    // This is handled by query now, but we could force open them
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Open Favorites") },
+                                                leadingIcon = { Icon(Icons.Default.Star, null) },
+                                                onClick = { 
+                                                    showMenu = false
+                                                }
+                                            )
+                                            HorizontalDivider()
+                                            DropdownMenuItem(
                                                 text = { Text(Localizer.getString("friend_list", lang)) },
                                                 onClick = { showMenu = false; navController.navigate(Screen.UserLists.route) }
+                                            )
+                                            HorizontalDivider()
+                                            DropdownMenuItem(
+                                                text = { Text(Localizer.getString("search_user", lang)) },
+                                                leadingIcon = { Icon(Icons.Default.Search, null) },
+                                                onClick = { 
+                                                    showMenu = false
+                                                    showUserSearchDialog = true
+                                                }
                                             )
                                             HorizontalDivider()
                                             activeServers.forEach { serverId ->
                                                 val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
                                                 DropdownMenuItem(
-                                                    text = { Text("${Localizer.getString("search_user", lang)} ($serverName)") },
+                                                    text = { Text("${Localizer.getString("new_private", lang)} ($serverName)") },
                                                     onClick = { showMenu = false; showNewPrivateDialog = serverId }
                                                 )
                                             }

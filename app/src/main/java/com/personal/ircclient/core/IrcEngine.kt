@@ -930,19 +930,35 @@ class IrcEngine(
     }
 
     private suspend fun incrementUnreadCount(name: String) {
-        if (name == "Status" || name.equals(currentlyViewingTarget, ignoreCase = true)) return
+        if (name == "Status") return
+        val isViewing = name.equals(currentlyViewingTarget, ignoreCase = true)
+        val now = System.currentTimeMillis()
+        
         val channel = repository?.getChannel(serverId, name)
         if (channel != null) {
-            repository.updateChannel(channel.copy(unreadCount = channel.unreadCount + 1))
+            repository.updateChannel(channel.copy(
+                unreadCount = if (isViewing) 0 else channel.unreadCount + 1,
+                lastVisited = now
+            ))
         } else {
             repository?.insertChannel(
                 ChannelEntity(
                     serverId = serverId,
                     name = name,
-                    unreadCount = 1,
-                    isJoined = false
+                    unreadCount = if (isViewing) 0 else 1,
+                    isJoined = isChannel(name),
+                    lastVisited = now
                 )
             )
+        }
+
+        if (!isChannel(name)) {
+            val user = repository?.getUser(name, serverId)
+            if (user != null) {
+                repository.insertUser(user.copy(lastVisited = now))
+            } else {
+                repository?.insertUser(UserEntity(nickname = name, serverId = serverId, lastVisited = now))
+            }
         }
     }
 

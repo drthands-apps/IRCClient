@@ -22,7 +22,9 @@ data class UserEntity(
     val isFriend: Boolean = false,
     val encryptionKey: String? = null,
     val secureHandshakeStatus: HandshakeStatus = HandshakeStatus.NONE,
-    val notes: String? = null
+    val notes: String? = null,
+    val isFavorite: Boolean = false,
+    val lastVisited: Long = 0
 )
 
 enum class HandshakeStatus {

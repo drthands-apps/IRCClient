@@ -329,8 +329,14 @@ class ChatsViewModel(
         ircManager.setCurrentlyViewing(serverId, target)
         viewModelScope.launch {
             val channel = repository.getChannel(serverId, target)
+            val now = System.currentTimeMillis()
             if (channel != null) {
-                repository.updateChannel(channel.copy(unreadCount = 0, lastVisited = System.currentTimeMillis()))
+                repository.updateChannel(channel.copy(unreadCount = 0, lastVisited = now))
+            } else {
+                val user = repository.getUser(target, serverId)
+                if (user != null) {
+                    repository.insertUser(user.copy(lastVisited = now))
+                }
             }
         }
     }
@@ -341,7 +347,16 @@ class ChatsViewModel(
             if (channel != null) {
                 repository.updateChannel(channel.copy(isFavorite = !channel.isFavorite))
             } else {
-                repository.insertChannel(ChannelEntity(serverId = serverId, name = target, isFavorite = true, isJoined = false))
+                val user = repository.getUser(target, serverId)
+                if (user != null) {
+                    repository.insertUser(user.copy(isFavorite = !user.isFavorite))
+                } else {
+                    if (isChannel(target)) {
+                        repository.insertChannel(ChannelEntity(serverId = serverId, name = target, isFavorite = true, isJoined = false))
+                    } else {
+                        repository.insertUser(UserEntity(nickname = target, serverId = serverId, isFavorite = true))
+                    }
+                }
             }
         }
     }
@@ -408,12 +423,21 @@ class ChatsViewModel(
                 val engine = ircManager.getEngine(serverId)
                 engine?.send("PART $target :${settings.defaultPartMessage}")
             }
-            if (channel == null || !channel.saveLog) {
-                repository.clearHistory(serverId, target)
-            }
+            
+            // For channels: clear unread and status
             if (channel != null) {
-                 repository.updateChannel(channel.copy(unreadCount = 0, isJoined = false))
-                 repository.deleteChannel(channel)
+                repository.updateChannel(channel.copy(unreadCount = 0, isJoined = false, lastVisited = 0))
+                if (!channel.saveLog) {
+                    repository.clearHistory(serverId, target)
+                    repository.deleteChannel(channel)
+                }
+            } else {
+                // For private chats (users)
+                val user = repository.getUser(target, serverId)
+                if (user != null) {
+                    repository.insertUser(user.copy(lastVisited = 0)) // Reset visibility
+                    repository.clearHistory(serverId, target)
+                }
             }
         }
     }
@@ -627,6 +651,20 @@ class ChatsViewModel(
         viewModelScope.launch {
             val engine = ircManager.getEngine(serverId)
             if (engine != null) {
+                // Update last visited on send to ensure it moves to the top
+                val now = System.currentTimeMillis()
+                val channel = repository.getChannel(serverId, target)
+                if (channel != null) {
+                    repository.updateChannel(channel.copy(lastVisited = now))
+                } else {
+                    val user = repository.getUser(target, serverId)
+                    if (user != null) {
+                        repository.insertUser(user.copy(lastVisited = now))
+                    } else if (!isChannel(target) && target != "Status") {
+                        repository.insertUser(UserEntity(nickname = target, serverId = serverId, lastVisited = now))
+                    }
+                }
+
                 if (text.startsWith("/")) {
                     val handled = engine.executeCommand(target, text)
                     if (!handled) engine.send(text.substring(1))
@@ -644,6 +682,7 @@ class ChatsViewModel(
                 }
                 
                 if (target == "Status") { engine.send(text); return@launch }
+                
                 val user = repository.getUser(target, serverId)
                 val key = user?.encryptionKey
                 val finalMessage = if (key != null) "[ENC] " + EncryptionManager.encrypt(text, key) else text

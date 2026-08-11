@@ -91,6 +91,7 @@ fun ChatsScreen(
                                         onClick = {
                                             viewModel.closeChat(targetInfo.serverId, targetInfo.target)
                                             showConfirmClose = false
+                                            scope.launch { dismissState.reset() }
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                                     ) { Text(Localizer.getString("delete", lang)) }
@@ -151,6 +152,7 @@ fun ChatListItem(
     onClick: () -> Unit
 ) {
     val isChannel = targetInfo.target.startsWith("#")
+    val isPro = com.personal.ircclient.BuildConfig.FLAVOR == "pro"
     
     Card(
         modifier = Modifier
@@ -166,18 +168,30 @@ fun ChatListItem(
             Icon(
                 imageVector = if (isChannel) Icons.Default.ChatBubble else Icons.Default.Person,
                 contentDescription = null,
-                tint = if (targetInfo.isJoined == true) MaterialTheme.colorScheme.primary else Color.Gray,
+                tint = if (targetInfo.isJoined == true || !isChannel) MaterialTheme.colorScheme.primary else Color.Gray,
                 modifier = Modifier.size(20.dp)
             )
             
             Spacer(modifier = Modifier.width(12.dp))
             
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = targetInfo.target,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = if ((targetInfo.unreadCount ?: 0) > 0) FontWeight.Bold else FontWeight.Normal
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = targetInfo.target,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = if ((targetInfo.unreadCount ?: 0) > 0) FontWeight.Bold else FontWeight.Normal
+                    )
+                    if (targetInfo.encryptionKey != null) {
+                        Spacer(Modifier.width(8.dp))
+                        Icon(Icons.Default.Lock, "Encrypted", tint = Color.Green, modifier = Modifier.size(14.dp))
+                    }
+                    if (!isChannel && isPro) {
+                        Spacer(Modifier.width(8.dp))
+                        Icon(Icons.Default.Image, null, tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f), modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Default.Mic, null, tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f), modifier = Modifier.size(14.dp))
+                    }
+                }
                 if (!targetInfo.topic.isNullOrBlank()) {
                     Text(
                         text = targetInfo.topic,
@@ -189,15 +203,13 @@ fun ChatListItem(
                 }
             }
 
-            if (isChannel) {
-                IconButton(onClick = onFavoriteClick) {
-                    Icon(
-                        imageVector = if (targetInfo.isFavorite == true) Icons.Default.Star else Icons.Default.StarOutline,
-                        contentDescription = "Favorite",
-                        tint = if (targetInfo.isFavorite == true) Color(0xFFFFD700) else Color.Gray,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+            IconButton(onClick = onFavoriteClick) {
+                Icon(
+                    imageVector = if (targetInfo.isFavorite == true) Icons.Default.Star else Icons.Default.StarOutline,
+                    contentDescription = "Favorite",
+                    tint = if (targetInfo.isFavorite == true) Color(0xFFFFD700) else Color.Gray,
+                    modifier = Modifier.size(20.dp)
+                )
             }
             
             if ((targetInfo.unreadCount ?: 0) > 0) {
