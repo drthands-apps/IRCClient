@@ -302,6 +302,10 @@ class ChatsViewModel(
         targets.filter { !isChannel(it.target) && it.target != "Status" }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val statusTargets: StateFlow<List<TargetInfo>> = activeTargets.map { targets ->
+        targets.filter { it.target == "Status" }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val allServers: StateFlow<List<ServerEntity>> = repository.allServers
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -317,15 +321,80 @@ class ChatsViewModel(
         targets.sumOf { it.unreadCount ?: 0 }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    val statusUnreadCount: StateFlow<Int> = statusTargets.map { targets ->
+        targets.sumOf { it.unreadCount ?: 0 }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     fun clearUnreadCount(serverId: Long, target: String) {
         ircManager.setCurrentlyViewing(serverId, target)
         viewModelScope.launch {
             val channel = repository.getChannel(serverId, target)
             if (channel != null) {
-                repository.updateChannel(channel.copy(unreadCount = 0))
+                repository.updateChannel(channel.copy(unreadCount = 0, lastVisited = System.currentTimeMillis()))
             }
         }
     }
+
+    fun toggleFavorite(serverId: Long, target: String) {
+        viewModelScope.launch {
+            val channel = repository.getChannel(serverId, target)
+            if (channel != null) {
+                repository.updateChannel(channel.copy(isFavorite = !channel.isFavorite))
+            } else {
+                repository.insertChannel(ChannelEntity(serverId = serverId, name = target, isFavorite = true, isJoined = false))
+            }
+        }
+    }
+
+    fun joinFavoriteChannels() {
+        viewModelScope.launch {
+            val favorites = repository.getAllChannels().first().filter { it.isFavorite }
+            favorites.forEach { fav ->
+                val engine = ircManager.getEngine(fav.serverId)
+                engine?.send("JOIN ${fav.name}")
+            }
+        }
+    }
+
+    fun joinRecentChannels() {
+        viewModelScope.launch {
+            val recents = repository.getAllChannels().first()
+                .filter { it.lastVisited > 0 }
+                .sortedByDescending { it.lastVisited }
+                .take(5)
+            recents.forEach { recent ->
+                val engine = ircManager.getEngine(recent.serverId)
+                engine?.send("JOIN ${recent.name}")
+            }
+        }
+    }
+
+    fun findUserInChannels(nickname: String): List<Pair<Long, String>> {
+        val results = mutableListOf<Pair<Long, String>>()
+        ircManager.globalStatuses.value.keys.forEach { serverId ->
+            val engine = ircManager.getEngine(serverId)
+            engine?.channelUsers?.value?.forEach { (channel, users) ->
+                if (users.any { it.equals(nickname, ignoreCase = true) }) {
+                    results.add(serverId to channel)
+                }
+            }
+        }
+        return results
+    }
+
+    val totalChannelUsersCount: StateFlow<Int> = ircManager.globalStatuses
+        .flatMapLatest { statuses ->
+            val engineFlows = statuses.keys.mapNotNull { ircManager.getEngine(it)?.channelUsers }
+            if (engineFlows.isEmpty()) flowOf(0)
+            else combine(engineFlows) { userMaps ->
+                var total = 0
+                userMaps.forEach { map ->
+                    map.values.forEach { total += it.size }
+                }
+                total
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     fun onLeaveChat(serverId: Long) {
         ircManager.setCurrentlyViewing(serverId, null)

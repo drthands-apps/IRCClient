@@ -1,12 +1,8 @@
 package com.personal.ircclient.ui.main
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -82,9 +78,54 @@ fun MainScreen() {
 
         val channelsUnread by chatsViewModel.channelsUnreadCount.collectAsState()
         val privatesUnread by chatsViewModel.privatesUnreadCount.collectAsState()
+        val statusUnread by chatsViewModel.statusUnreadCount.collectAsState()
+        val totalUsersCount by chatsViewModel.totalChannelUsersCount.collectAsState()
 
         var showJoinChannelDialog by remember { mutableStateOf<Long?>(null) } // serverId
         var showNewPrivateDialog by remember { mutableStateOf<Long?>(null) } // serverId
+        var showUserSearchDialog by remember { mutableStateOf(false) }
+
+        if (showUserSearchDialog) {
+            var searchNick by remember { mutableStateOf("") }
+            var searchResults by remember { mutableStateOf<List<Pair<Long, String>>>(emptyList()) }
+            AlertDialog(
+                onDismissRequest = { showUserSearchDialog = false },
+                title = { Text(Localizer.getString("search_user", lang)) },
+                text = {
+                    Column {
+                        OutlinedTextField(
+                            value = searchNick,
+                            onValueChange = { 
+                                searchNick = it
+                                if (it.length >= 3) {
+                                    searchResults = chatsViewModel.findUserInChannels(it)
+                                }
+                            },
+                            label = { Text("Nickname") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        if (searchResults.isNotEmpty()) {
+                            Text("Found in:", style = MaterialTheme.typography.labelSmall)
+                            searchResults.forEach { (sId, channel) ->
+                                val sName by chatsViewModel.getServerName(sId).collectAsState(initial = "")
+                                TextButton(onClick = {
+                                    showUserSearchDialog = false
+                                    navController.navigate(Screen.ChatDetail.createRoute(sId, channel))
+                                }) {
+                                    Text("$channel ($sName)")
+                                }
+                            }
+                        } else if (searchNick.length >= 3) {
+                            Text("No users found in active channels", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = { showUserSearchDialog = false }) { Text(Localizer.getString("close", lang)) }
+                }
+            )
+        }
 
         if (showJoinChannelDialog != null) {
             var channelName by remember { mutableStateOf("") }
@@ -211,9 +252,35 @@ fun MainScreen() {
                                     val activeServers by serversViewModel.activeServerIds.collectAsState()
                                     Box {
                                         IconButton(onClick = { showMenu = true }) {
-                                            Icon(Icons.Default.AddCircle, contentDescription = null)
+                                            Icon(Icons.Default.MoreVert, contentDescription = null)
                                         }
                                         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                            DropdownMenuItem(
+                                                text = { Text("Connect Recents") },
+                                                leadingIcon = { Icon(Icons.Default.History, null) },
+                                                onClick = { 
+                                                    showMenu = false
+                                                    chatsViewModel.joinRecentChannels()
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Connect Favorites") },
+                                                leadingIcon = { Icon(Icons.Default.Star, null) },
+                                                onClick = { 
+                                                    showMenu = false
+                                                    chatsViewModel.joinFavoriteChannels()
+                                                }
+                                            )
+                                            HorizontalDivider()
+                                            DropdownMenuItem(
+                                                text = { Text(Localizer.getString("search_user", lang)) },
+                                                leadingIcon = { Icon(Icons.Default.Search, null) },
+                                                onClick = { 
+                                                    showMenu = false
+                                                    showUserSearchDialog = true
+                                                }
+                                            )
+                                            HorizontalDivider()
                                             activeServers.forEach { serverId ->
                                                 val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
                                                 DropdownMenuItem(
@@ -226,7 +293,11 @@ fun MainScreen() {
                                                 val serverName by chatsViewModel.getServerName(serverId).collectAsState(initial = "Server $serverId")
                                                 DropdownMenuItem(
                                                     text = { Text("${Localizer.getString("discover", lang)} ($serverName)") },
-                                                    onClick = { showMenu = false; navController.navigate(Screen.ChannelDiscovery.createRoute(serverId)) }
+                                                    leadingIcon = { Icon(Icons.Default.Language, null) },
+                                                    onClick = { 
+                                                        showMenu = false
+                                                        navController.navigate(Screen.ChannelDiscovery.createRoute(serverId))
+                                                    }
                                                 )
                                             }
                                         }
@@ -266,14 +337,21 @@ fun MainScreen() {
                         NavigationBarItem(
                             icon = { 
                                 val badgeCount = when (screen) {
-                                    Screen.Channels -> channelsUnread
+                                    Screen.Servers -> statusUnread
+                                    Screen.Channels -> if (totalUsersCount > 0) totalUsersCount else channelsUnread
                                     Screen.DirectMessages -> privatesUnread
                                     else -> 0
                                 }
                                 BadgedBox(
                                     badge = {
                                         if (badgeCount > 0) {
-                                            Badge { Text(badgeCount.toString()) }
+                                            Badge { 
+                                                Text(
+                                                    if (screen == Screen.Channels && totalUsersCount > 0) 
+                                                        if (totalUsersCount > 999) "999+" else totalUsersCount.toString()
+                                                    else badgeCount.toString()
+                                                ) 
+                                            }
                                         }
                                     }
                                 ) {
@@ -308,9 +386,7 @@ fun MainScreen() {
                     }
                 }
             },
-            floatingActionButton = {
-                // FAB moved to Header menu for aesthetic homogeneity
-            }
+            floatingActionButton = {}
         ) { innerPadding ->
             NavHost(
                 navController = navController,

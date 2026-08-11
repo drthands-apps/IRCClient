@@ -25,5 +25,7 @@ data class ChannelEntity(
     val isBanned: Boolean = false,
     val unreadCount: Int = 0,
     val saveLog: Boolean = false,
-    val topic: String? = null
+    val topic: String? = null,
+    val isFavorite: Boolean = false,
+    val lastVisited: Long = 0
 )

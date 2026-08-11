@@ -893,10 +893,12 @@ class IrcEngine(
 
     private suspend fun updateChannelStatus(name: String, joined: Boolean, banned: Boolean? = null) {
         val channel = repository?.getChannel(serverId, name)
+        val now = if (joined) System.currentTimeMillis() else (channel?.lastVisited ?: 0L)
         if (channel != null) {
             repository.updateChannel(channel.copy(
                 isJoined = joined,
-                isBanned = banned ?: channel.isBanned
+                isBanned = banned ?: channel.isBanned,
+                lastVisited = now
             ))
         } else {
             repository?.insertChannel(
@@ -904,7 +906,8 @@ class IrcEngine(
                     serverId = serverId,
                     name = name,
                     isJoined = joined,
-                    isBanned = banned ?: false
+                    isBanned = banned ?: false,
+                    lastVisited = now
                 )
             )
         }
