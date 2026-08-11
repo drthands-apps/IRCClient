@@ -866,7 +866,11 @@ class IrcEngine(
     }
 
     suspend fun send(raw: String, target: String? = null) {
-        val finalRaw = sniffer.onOutgoingMessage(raw, target ?: currentlyViewingTarget, currentNickname) ?: return
+        val snifferResult = sniffer.onOutgoingMessage(raw, target ?: currentlyViewingTarget, currentNickname) ?: return
+        
+        // If the sniffer didn't replace a command (it still starts with /), strip it for the server
+        val finalRaw = if (snifferResult.startsWith("/")) snifferResult.substring(1) else snifferResult
+
         withContext(Dispatchers.IO) {
             try {
                 writer?.write("$finalRaw\r\n")

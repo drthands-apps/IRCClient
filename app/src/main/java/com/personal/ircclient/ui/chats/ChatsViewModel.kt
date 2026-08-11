@@ -673,7 +673,10 @@ class ChatsViewModel(
 
                 if (text.startsWith("/")) {
                     val handled = engine.executeCommand(target, text)
-                    if (!handled) engine.send(text.substring(1))
+                    if (!handled) {
+                        // If not a built-in command, send to engine (it will check scripts)
+                        engine.send(text, target)
+                    }
                     
                     if (text.startsWith("/ME ", ignoreCase = true)) {
                         val action = text.substring(4)

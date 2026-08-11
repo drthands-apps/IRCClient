@@ -128,6 +128,12 @@ class IrcRepository(
         asciiArtDao.insert(AsciiArtEntity(name = "Hello", content = "Hello everyone! \\u000303Welcome!\\u000f", isPhrase = true))
         asciiArtDao.insert(AsciiArtEntity(name = "Status", content = "\\u0002FenixIRC\\u000f \\u000302Connected\\u000f", isPhrase = true))
         asciiArtDao.insert(AsciiArtEntity(name = "Small Bird", content = "  \\\\\\n (o>\\n// )\\n V_/_", isPhrase = false))
+        
+        // Coffee & Flowers
+        asciiArtDao.insert(AsciiArtEntity(name = "Morning Coffee", content = "  (  ( \\n   )  )\\n  ____\\n |    |]\\n |____/\\n (____)", isPhrase = false))
+        asciiArtDao.insert(AsciiArtEntity(name = "Flower", content = "  \\\\ | /\\n  - O -\\n  / | \\\\\\n    |\\n   \\\\|/\\n    |", isPhrase = false))
+        asciiArtDao.insert(AsciiArtEntity(name = "Share Coffee", content = "☕ Here is a coffee for you!", isPhrase = true))
+        asciiArtDao.insert(AsciiArtEntity(name = "Red Rose", content = " \\u000304@};--\\u000f A rose for you.", isPhrase = true))
     }
 
     suspend fun deleteAsciiArt(item: AsciiArtEntity) = asciiArtDao.delete(item)
@@ -139,6 +145,16 @@ class IrcRepository(
             insertScript(ScriptEntity(
                 name = "Quick Greet",
                 content = "OUT: /hi -> PRIVMSG %T :Hello everyone! Greetings from %N.",
+                triggerType = "OUTGOING"
+            ))
+            insertScript(ScriptEntity(
+                name = "Coffee Script",
+                content = "OUT: /cafe -> PRIVMSG %T :☕ Serving a hot coffee for %A! Enjoy.",
+                triggerType = "OUTGOING"
+            ))
+            insertScript(ScriptEntity(
+                name = "Flower Script",
+                content = "OUT: /flower -> PRIVMSG %T :\\u000303\\\\|/\\u000f \\u000313(@)\\u000f A beautiful flower for %A!",
                 triggerType = "OUTGOING"
             ))
             insertScript(ScriptEntity(

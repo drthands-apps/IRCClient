@@ -21,8 +21,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.personal.ircclient.BuildConfig
 import com.personal.ircclient.core.utils.Localizer
+import com.personal.ircclient.core.utils.LinkHandler
 import com.personal.ircclient.data.local.entities.EventDisplayMode
 import com.personal.ircclient.ui.chats.ChatsViewModel
 
@@ -35,31 +37,40 @@ fun SettingsScreen(
     val settings by viewModel.settingsState.collectAsState()
     val lang = settings.language
     var showColorPickerBy by remember { mutableStateOf<String?>(null) }
-    var selectedCategory by remember { mutableStateOf("Appearance") }
-    val isPro = com.personal.ircclient.BuildConfig.FLAVOR == "pro"
+    var selectedCategory by remember { mutableStateOf("Connectivity") }
+    
+    // Improved isPro check
+    val isPro = com.personal.ircclient.BuildConfig.FLAVOR == "pro" || 
+                context.packageName.contains(".pro", ignoreCase = true)
 
-    val categories = mutableListOf(
-        "Appearance" to Icons.Default.Palette,
-        "Security & Privacy" to Icons.Default.Security,
-        "Audio & Events" to Icons.Default.VolumeUp,
-        "Radio" to Icons.Default.Radio,
-        "Connectivity" to Icons.Default.Cloud,
-        "ASCII & Phrases" to Icons.Default.ArtTrack
-    ).apply {
-        if (isPro) {
-            add("Scripts" to Icons.Default.Code)
+    val categories = remember(isPro) {
+        mutableListOf(
+            "Connectivity" to Icons.Default.Cloud,
+            "Security & Privacy" to Icons.Default.Security,
+            "Logs & History" to Icons.Default.History,
+            "Audio & Events" to Icons.Default.VolumeUp,
+            "Appearance" to Icons.Default.Palette,
+            "ASCII & Phrases" to Icons.Default.ArtTrack,
+            "Radio" to Icons.Default.Radio
+        ).apply {
+            if (isPro) {
+                add("Scripts" to Icons.Default.Code)
+            }
+            add("Help & Tutorials" to Icons.Default.HelpCenter)
+            add("About" to Icons.Default.Info)
         }
-        add("About" to Icons.Default.Info)
     }
 
     val categoryLabels = mapOf(
-        "Appearance" to Localizer.getString("appearance", lang),
-        "Security & Privacy" to Localizer.getString("security_privacy", lang),
-        "Audio & Events" to Localizer.getString("audio_events", lang),
-        "Radio" to Localizer.getString("radio", lang),
         "Connectivity" to Localizer.getString("connectivity", lang),
+        "Security & Privacy" to Localizer.getString("security_privacy", lang),
+        "Logs & History" to "Logs & History",
+        "Audio & Events" to Localizer.getString("audio_events", lang),
+        "Appearance" to Localizer.getString("appearance", lang),
         "ASCII & Phrases" to Localizer.getString("ascii_phrases", lang),
+        "Radio" to Localizer.getString("radio", lang),
         "Scripts" to Localizer.getString("scripts", lang),
+        "Help & Tutorials" to Localizer.getString("help_tutorials", lang),
         "About" to Localizer.getString("about", lang)
     )
 
@@ -81,23 +92,51 @@ fun SettingsScreen(
     Row(modifier = Modifier.fillMaxSize()) {
         NavigationRail(
             modifier = Modifier.width(100.dp),
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            header = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.LogoDev, 
+                        null, 
+                        modifier = Modifier.padding(top = 16.dp).size(32.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text("AI-First", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                }
+            }
         ) {
-            categories.forEach { (name, icon) ->
-                NavigationRailItem(
-                    selected = selectedCategory == name,
-                    onClick = { selectedCategory = name },
-                    icon = { Icon(icon, contentDescription = name) },
-                    label = { 
-                        Text(
-                            text = categoryLabels[name] ?: name, 
-                            style = MaterialTheme.typography.labelSmall,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            maxLines = 2,
-                            softWrap = true
-                        ) 
-                    }
-                )
+            // Standard NavigationRail doesn't scroll. We wrap items in a scrollable Column.
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                categories.forEach { (name, icon) ->
+                    NavigationRailItem(
+                        selected = selectedCategory == name,
+                        onClick = { selectedCategory = name },
+                        icon = { 
+                            BadgedBox(badge = {
+                                if (name == "Scripts") {
+                                    Badge { Text("PRO", fontSize = 8.sp) }
+                                }
+                            }) {
+                                Icon(icon, contentDescription = name) 
+                            }
+                        },
+                        label = { 
+                            Text(
+                                text = categoryLabels[name] ?: name, 
+                                style = MaterialTheme.typography.labelSmall,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                maxLines = 2,
+                                softWrap = true
+                            ) 
+                        }
+                    )
+                }
             }
         }
 
@@ -115,16 +154,110 @@ fun SettingsScreen(
             )
 
             when (selectedCategory) {
-                "Appearance" -> AppearanceSettings(settings, viewModel) { showColorPickerBy = it }
-                "Security & Privacy" -> SecuritySettings(settings, viewModel, onNavigateToUserLists)
-                "Audio & Events" -> AudioSettings(settings, viewModel)
-                "Radio" -> RadioSettings(settings, viewModel)
                 "Connectivity" -> ConnectivitySettings(settings, viewModel)
+                "Security & Privacy" -> SecuritySettings(settings, viewModel, onNavigateToUserLists)
+                "Logs & History" -> LogsSettings(settings, viewModel)
+                "Audio & Events" -> AudioSettings(settings, viewModel)
+                "Appearance" -> AppearanceSettings(settings, viewModel) { showColorPickerBy = it }
                 "ASCII & Phrases" -> AsciiManagementSettings(viewModel, lang)
+                "Radio" -> RadioSettings(settings, viewModel)
                 "Scripts" -> ScriptsSettings(viewModel, lang)
+                "Help & Tutorials" -> HelpSettings(settings)
                 "About" -> AboutSettings(context, lang)
             }
         }
+    }
+}
+
+@Composable
+fun HelpSettings(settings: com.personal.ircclient.data.local.entities.SettingsEntity) {
+    val lang = settings.language
+    val context = LocalContext.current
+    
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        SettingsItem(
+            title = Localizer.getString("open_manual", lang),
+            subtitle = "Guía completa de funciones de FenixIRC",
+            icon = Icons.Default.Description
+        ) {
+            LinkHandler.openLink(context, "https://fenixirc.com/manual", settings)
+        }
+
+        SettingsItem(
+            title = Localizer.getString("online_tutorials", lang),
+            subtitle = "Aprende a crear Scripts y ASCII Art",
+            icon = Icons.Default.MenuBook
+        ) {
+            LinkHandler.openLink(context, "https://fenixirc.com/tutorials", settings)
+        }
+
+        SettingsItem(
+            title = Localizer.getString("support_web", lang),
+            subtitle = "Obtén ayuda de la comunidad",
+            icon = Icons.Default.Public
+        ) {
+            LinkHandler.openLink(context, "https://fenixirc.com/support", settings)
+        }
+        
+        Spacer(Modifier.height(16.dp))
+        
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("¿Sabías que?", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Puedes usar %T, %N y %A en tus scripts para automatizar respuestas y acciones.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun LogsSettings(
+    settings: com.personal.ircclient.data.local.entities.SettingsEntity,
+    viewModel: ChatsViewModel
+) {
+    val lang = settings.language
+    Column {
+        Text("Limpieza de Historial", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(8.dp))
+        
+        var maxLines by remember { mutableStateOf(settings.maxHistoryLines.toString()) }
+        OutlinedTextField(
+            value = maxLines, 
+            onValueChange = { 
+                maxLines = it
+                it.toIntOrNull()?.let { num -> viewModel.updateSettings(settings.copy(maxHistoryLines = num)) }
+            }, 
+            label = { Text("Máximo de líneas por canal") }, 
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text("Los mensajes antiguos se purgarán automáticamente para ahorrar espacio.", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
+        
+        Spacer(Modifier.height(24.dp))
+        Text("Registro en Archivos (Logs)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(8.dp))
+        
+        var expandedPath by remember { mutableStateOf(false) }
+        Box {
+            OutlinedButton(onClick = { expandedPath = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("Almacenamiento: ${settings.logStoragePath.uppercase()}")
+            }
+            DropdownMenu(expanded = expandedPath, onDismissRequest = { expandedPath = false }) {
+                DropdownMenuItem(text = { Text("Interno (Cache de la App)") }, onClick = {
+                    viewModel.updateSettings(settings.copy(logStoragePath = "internal"))
+                    expandedPath = false
+                })
+                DropdownMenuItem(text = { Text("Externo (Documentos/FenixLogs)") }, onClick = {
+                    viewModel.updateSettings(settings.copy(logStoragePath = "external"))
+                    expandedPath = false
+                })
+            }
+        }
+        Text("Logs de texto permanentes para los canales con 'Guardar Log' activo.", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
     }
 }
 
@@ -138,7 +271,7 @@ fun RadioSettings(
     var showAddDialog by remember { mutableStateOf(false) }
 
     Column {
-        SecurityToggleItem(Localizer.getString("enable_radio", lang), "Show player in rooms", settings.isRadioPluginEnabled) {
+        SecurityToggleItem(Localizer.getString("enable_radio", lang), "Mostrar reproductor en salas", settings.isRadioPluginEnabled) {
             viewModel.updateSettings(settings.copy(isRadioPluginEnabled = it))
         }
 
@@ -326,7 +459,7 @@ fun AppearanceSettings(
             }
         }
 
-        val themes = mapOf("LIGHT" to "Light Mode", "DARK" to "Night Mode", "OLED" to "True Black (OLED)")
+        val themes = mapOf("LIGHT" to "Modo Claro", "DARK" to "Modo Noche", "OLED" to "Negro Puro (OLED)")
         var expandedTheme by remember { mutableStateOf(false) }
         Box(modifier = Modifier.padding(vertical = 8.dp)) {
             OutlinedButton(onClick = { expandedTheme = true }, modifier = Modifier.fillMaxWidth()) {
@@ -343,13 +476,13 @@ fun AppearanceSettings(
         }
 
         Spacer(Modifier.height(16.dp))
-        SecurityToggleItem(Localizer.getString("enable_irc_colors", lang), "Show formatted text", settings.enableIrcColors) {
+        SecurityToggleItem(Localizer.getString("enable_irc_colors", lang), "Mostrar texto con formato", settings.enableIrcColors) {
             viewModel.updateSettings(settings.copy(enableIrcColors = it))
         }
-        ColorPickerItem(Localizer.getString("identity_color", lang), "Nick & border color", settings.ownMessageColor) { onPickColor("own") }
-        ColorPickerItem(Localizer.getString("incoming_bubbles", lang), "Background for others", settings.otherBubbleColor) { onPickColor("other") }
-        ColorPickerItem(Localizer.getString("own_bubbles", lang), "Your background", settings.ownBubbleColor) { onPickColor("bubble") }
-        SecurityToggleItem(Localizer.getString("high_contrast", lang), "Sharper visibility", settings.useHighContrast) {
+        ColorPickerItem(Localizer.getString("identity_color", lang), "Color de nick y bordes", settings.ownMessageColor) { onPickColor("own") }
+        ColorPickerItem(Localizer.getString("incoming_bubbles", lang), "Fondo para otros", settings.otherBubbleColor) { onPickColor("other") }
+        ColorPickerItem(Localizer.getString("own_bubbles", lang), "Tu fondo", settings.ownBubbleColor) { onPickColor("bubble") }
+        SecurityToggleItem(Localizer.getString("high_contrast", lang), "Visibilidad mejorada", settings.useHighContrast) {
             viewModel.updateSettings(settings.copy(useHighContrast = it))
         }
     }
@@ -378,8 +511,8 @@ fun SecuritySettings(
             }
         }
 
-        SettingsItem(Localizer.getString("friend_list", lang), "Friends & Ignored", Icons.Default.People, onNavigateToUserLists)
-        SecurityToggleItem(Localizer.getString("only_friends_pv", lang), "Block stranger PMs", settings.allowPrivateOnlyFromFriends) {
+        SettingsItem(Localizer.getString("friend_list", lang), "Amigos e Ignorados", Icons.Default.People, onNavigateToUserLists)
+        SecurityToggleItem(Localizer.getString("only_friends_pv", lang), "Bloquear PV de desconocidos", settings.allowPrivateOnlyFromFriends) {
             viewModel.updateSettings(settings.copy(allowPrivateOnlyFromFriends = it))
         }
         if (settings.allowPrivateOnlyFromFriends) {
@@ -387,42 +520,13 @@ fun SecuritySettings(
             OutlinedTextField(value = autoMsg, onValueChange = { autoMsg = it; viewModel.updateSettings(settings.copy(autoResponseForBlockedPv = it)) }, label = { Text(Localizer.getString("auto_response", lang)) }, modifier = Modifier.fillMaxWidth())
         }
         Spacer(Modifier.height(16.dp))
-        SecurityToggleItem(Localizer.getString("link_previews", lang), "Show media previews", settings.showLinkPreviews) {
+        SecurityToggleItem(Localizer.getString("link_previews", lang), "Mostrar previsualización de media", settings.showLinkPreviews) {
             viewModel.updateSettings(settings.copy(showLinkPreviews = it))
         }
-        SecurityToggleItem(Localizer.getString("auto_load_images", lang), "Privacy risk", settings.autoLoadImages) {
+        SecurityToggleItem(Localizer.getString("auto_load_images", lang), "Riesgo de privacidad", settings.autoLoadImages) {
             viewModel.updateSettings(settings.copy(autoLoadImages = it))
         }
-        Spacer(Modifier.height(16.dp))
-        Text("History & Logs", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-        var maxLines by remember { mutableStateOf(settings.maxHistoryLines.toString()) }
-        OutlinedTextField(
-            value = maxLines, 
-            onValueChange = { 
-                maxLines = it
-                it.toIntOrNull()?.let { num -> viewModel.updateSettings(settings.copy(maxHistoryLines = num)) }
-            }, 
-            label = { Text("Max History Lines per Channel") }, 
-            modifier = Modifier.fillMaxWidth()
-        )
         
-        var expandedPath by remember { mutableStateOf(false) }
-        Box(modifier = Modifier.padding(top = 8.dp)) {
-            OutlinedButton(onClick = { expandedPath = true }, modifier = Modifier.fillMaxWidth()) {
-                Text("Log Storage: ${settings.logStoragePath.uppercase()}")
-            }
-            DropdownMenu(expanded = expandedPath, onDismissRequest = { expandedPath = false }) {
-                DropdownMenuItem(text = { Text("Internal (App Cache)") }, onClick = {
-                    viewModel.updateSettings(settings.copy(logStoragePath = "internal"))
-                    expandedPath = false
-                })
-                DropdownMenuItem(text = { Text("External (Documents/FenixLogs)") }, onClick = {
-                    viewModel.updateSettings(settings.copy(logStoragePath = "external"))
-                    expandedPath = false
-                })
-            }
-        }
-
         Spacer(Modifier.height(16.dp))
         Text(Localizer.getString("away_messages", lang), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         var awayMsg by remember { mutableStateOf(settings.defaultAwayMessage) }
@@ -431,14 +535,11 @@ fun SecuritySettings(
         OutlinedTextField(value = backMsg, onValueChange = { backMsg = it; viewModel.updateSettings(settings.copy(defaultBackMessage = it)) }, label = { Text(Localizer.getString("default_back", lang)) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
         
         Spacer(Modifier.height(16.dp))
-        Text("Exit Messages", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        Text("Mensajes de Salida", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         var quitMsg by remember { mutableStateOf(settings.defaultQuitMessage) }
-        OutlinedTextField(value = quitMsg, onValueChange = { quitMsg = it; viewModel.updateSettings(settings.copy(defaultQuitMessage = it)) }, label = { Text("Default Quit Message") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = quitMsg, onValueChange = { quitMsg = it; viewModel.updateSettings(settings.copy(defaultQuitMessage = it)) }, label = { Text("Mensaje de Salida (QUIT)") }, modifier = Modifier.fillMaxWidth())
         var partMsg by remember { mutableStateOf(settings.defaultPartMessage) }
-        OutlinedTextField(value = partMsg, onValueChange = { partMsg = it; viewModel.updateSettings(settings.copy(defaultPartMessage = it)) }, label = { Text("Default Part Message") }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
-
-        var userAgent by remember { mutableStateOf(settings.customUserAgent) }
-        OutlinedTextField(value = userAgent, onValueChange = { userAgent = it; viewModel.updateSettings(settings.copy(customUserAgent = it)) }, label = { Text(Localizer.getString("user_agent", lang)) }, modifier = Modifier.fillMaxWidth().padding(top = 16.dp))
+        OutlinedTextField(value = partMsg, onValueChange = { partMsg = it; viewModel.updateSettings(settings.copy(defaultPartMessage = it)) }, label = { Text("Mensaje de Partida (PART)") }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
     }
 }
 
@@ -449,14 +550,14 @@ fun AudioSettings(
 ) {
     val lang = settings.language
     Column {
-        SecurityToggleItem(Localizer.getString("tts", lang), "Read aloud", viewModel.isTtsActive) { viewModel.setTtsEnabled(it) }
+        SecurityToggleItem(Localizer.getString("tts", lang), "Lectura en voz alta", viewModel.isTtsActive) { viewModel.setTtsEnabled(it) }
         SettingsSoundItem(Localizer.getString("sound_friend", lang), settings.soundOnFriendJoin) { viewModel.setSoundOnFriendJoin(it) }
         SettingsSoundItem(Localizer.getString("sound_pm", lang), settings.soundOnPrivateMessage) { viewModel.setSoundOnPrivateMessage(it) }
         SettingsSoundItem(Localizer.getString("sound_notice", lang), settings.soundOnNotice) { viewModel.updateSettings(settings.copy(soundOnNotice = it)) }
         SettingsSoundItem(Localizer.getString("sound_mention", lang), settings.soundOnMention) { viewModel.updateSettings(settings.copy(soundOnMention = it)) }
         Spacer(Modifier.height(16.dp))
         Text(Localizer.getString("events_display", lang), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-        SecurityToggleItem(Localizer.getString("show_events", lang), "Global visibility", viewModel.showEventsInRoom) { viewModel.setShowEventsInRoomEnabled(it) }
+        SecurityToggleItem(Localizer.getString("show_events", lang), "Visibilidad global", viewModel.showEventsInRoom) { viewModel.setShowEventsInRoomEnabled(it) }
         if (viewModel.showEventsInRoom) {
             EventSettingItem(Localizer.getString("joins", lang), viewModel.joinDisplayMode == EventDisplayMode.ROOM) { viewModel.setJoinDisplayEnabled(it) }
             EventSettingItem(Localizer.getString("parts", lang), viewModel.partDisplayMode == EventDisplayMode.ROOM) { viewModel.setPartDisplayEnabled(it) }
@@ -474,11 +575,52 @@ fun ConnectivitySettings(
     viewModel: ChatsViewModel
 ) {
     val lang = settings.language
+    val searchEngines = mapOf(
+        "Google" to "https://www.google.com/search?q=",
+        "DuckDuckGo" to "https://duckduckgo.com/?q=",
+        "Bing" to "https://www.bing.com/search?q=",
+        "Ecosia" to "https://www.ecosia.org/search?q=",
+        "Yahoo" to "https://search.yahoo.com/search?p=",
+        "Brave Search" to "https://search.brave.com/search?q=",
+        "StartPage" to "https://www.startpage.com/do/search?q=",
+        "Swisscows" to "https://swisscows.com/web?query=",
+        "Qwant" to "https://www.qwant.com/?q="
+    )
+
     Column {
-        SecurityToggleItem(Localizer.getString("stay_persistent", lang), "Background connection", settings.runInBackground) { viewModel.updateSettings(settings.copy(runInBackground = it)) }
-        var searchEngine by remember { mutableStateOf(settings.defaultSearchEngine) }
-        OutlinedTextField(value = searchEngine, onValueChange = { searchEngine = it; viewModel.updateSettings(settings.copy(defaultSearchEngine = it)) }, label = { Text(Localizer.getString("search_engine", lang)) }, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(16.dp))
+        SecurityToggleItem(Localizer.getString("stay_persistent", lang), "Mantener conexión en segundo plano", settings.runInBackground) { viewModel.updateSettings(settings.copy(runInBackground = it)) }
+        var userAgent by remember { mutableStateOf(settings.customUserAgent) }
+        OutlinedTextField(value = userAgent, onValueChange = { userAgent = it; viewModel.updateSettings(settings.copy(customUserAgent = it)) }, label = { Text(Localizer.getString("user_agent", lang)) }, modifier = Modifier.fillMaxWidth())
+        
+        Spacer(Modifier.height(24.dp))
+        Text(Localizer.getString("search_engine", lang), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        
+        var expandedEngines by remember { mutableStateOf(false) }
+        val currentEngineName = searchEngines.entries.find { it.value == settings.defaultSearchEngine }?.key ?: "Custom"
+        
+        Box(modifier = Modifier.padding(top = 8.dp)) {
+            OutlinedButton(onClick = { expandedEngines = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(currentEngineName)
+            }
+            DropdownMenu(expanded = expandedEngines, onDismissRequest = { expandedEngines = false }) {
+                searchEngines.forEach { (name, url) ->
+                    DropdownMenuItem(text = { Text(name) }, onClick = {
+                        viewModel.updateSettings(settings.copy(defaultSearchEngine = url))
+                        expandedEngines = false
+                    })
+                }
+            }
+        }
+
+        var customSearch by remember { mutableStateOf(settings.defaultSearchEngine) }
+        OutlinedTextField(
+            value = customSearch, 
+            onValueChange = { customSearch = it; viewModel.updateSettings(settings.copy(defaultSearchEngine = it)) }, 
+            label = { Text("Search URL (Custom)") }, 
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+        )
+        
+        Spacer(Modifier.height(24.dp))
         SecurityToggleItem(Localizer.getString("use_proxy", lang), "SOCKS/HTTP", settings.useProxy) { viewModel.updateSettings(settings.copy(useProxy = it)) }
         if (settings.useProxy) {
             var pHost by remember { mutableStateOf(settings.proxyHost) }
@@ -491,10 +633,33 @@ fun ConnectivitySettings(
 
 @Composable
 fun AboutSettings(context: android.content.Context, lang: String) {
+    var checkResult by remember { mutableStateOf<String?>(null) }
+    
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Default.LogoDev, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
         Text("FenixIRC", style = MaterialTheme.typography.headlineMedium)
-        Text("${Localizer.getString("version", lang)} 0.5 (Alpha)", style = MaterialTheme.typography.bodyMedium)
+        Text("${Localizer.getString("version", lang)} 0.6 (Alpha)", style = MaterialTheme.typography.bodyMedium)
+        Text("Edition: ${com.personal.ircclient.BuildConfig.FLAVOR.uppercase()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+        
+        Spacer(Modifier.height(8.dp))
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+            shape = MaterialTheme.shapes.extraSmall,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = Localizer.getString("made_with_gemini", lang),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
         
         Card(
             modifier = Modifier.padding(16.dp).fillMaxWidth(),
@@ -521,7 +686,21 @@ fun AboutSettings(context: android.content.Context, lang: String) {
         }
 
         Spacer(Modifier.height(16.dp))
-        Button(onClick = { /* Check updates */ }) { Text(Localizer.getString("check_updates", lang)) }
+        Button(onClick = { 
+            // Simulated check for version
+            checkResult = "already_latest"
+        }) { 
+            Text(Localizer.getString("check_version", lang)) 
+        }
+        
+        if (checkResult != null) {
+            Text(
+                text = Localizer.getString(checkResult!!, lang),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
     }
 }
 
@@ -540,7 +719,7 @@ fun AsciiManagementSettings(viewModel: ChatsViewModel, lang: String) {
             OutlinedButton(onClick = { showColorHelp = true }) { Icon(Icons.Default.ColorLens, null) }
         }
         if (showColorHelp) {
-            AlertDialog(onDismissRequest = { showColorHelp = false }, title = { Text("IRC Color Codes") }, text = { Text("Use \\u0003 followed by 00-15.\nExample: \\u000304Red\nBold: \\u0002, Reset: \\u000f") }, confirmButton = { TextButton(onClick = { showColorHelp = false }) { Text("Got it") } })
+            AlertDialog(onDismissRequest = { showColorHelp = false }, title = { Text("Códigos de Color IRC") }, text = { Text("Usa \\u0003 seguido de 00-15.\nEjemplo: \\u000304Rojo\nNegrita: \\u0002, Reset: \\u000f") }, confirmButton = { TextButton(onClick = { showColorHelp = false }) { Text("Entendido") } })
         }
         Spacer(Modifier.height(16.dp))
         if (items.isEmpty()) {
@@ -551,7 +730,7 @@ fun AsciiManagementSettings(viewModel: ChatsViewModel, lang: String) {
                     Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.weight(1f).clickable { showAddDialog = item }) {
                             Text(item.name, style = MaterialTheme.typography.titleSmall)
-                            Text(text = if (item.isPhrase) "Phrase" else "ASCII Art", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            Text(text = if (item.isPhrase) "Frase" else "ASCII Art", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                         IconButton(onClick = { viewModel.deleteAsciiArt(item) }) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
                     }
@@ -565,15 +744,15 @@ fun AsciiManagementSettings(viewModel: ChatsViewModel, lang: String) {
         var isPhrase by remember { mutableStateOf(showAddDialog!!.isPhrase) }
         AlertDialog(
             onDismissRequest = { showAddDialog = null },
-            title = { Text(if (showAddDialog!!.id == 0L) Localizer.getString("add_new", lang) else "Edit") },
+            title = { Text(if (showAddDialog!!.id == 0L) Localizer.getString("add_new", lang) else "Editar") },
             text = {
                 Column {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Nombre") }, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(value = content, onValueChange = { content = it }, label = { Text("Content") }, modifier = Modifier.fillMaxWidth().height(150.dp))
+                    OutlinedTextField(value = content, onValueChange = { content = it }, label = { Text("Contenido") }, modifier = Modifier.fillMaxWidth().height(150.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = isPhrase, onCheckedChange = { isPhrase = it })
-                        Text("Simple phrase?")
+                        Text("¿Frase simple?")
                     }
                 }
             },
@@ -586,7 +765,7 @@ fun AsciiManagementSettings(viewModel: ChatsViewModel, lang: String) {
 @Composable
 fun ColorPickerDialog(lang: String, onDismiss: () -> Unit, onColorSelected: (Long) -> Unit) {
     val colors = listOf(0xFFBB86FC, 0xFF6200EE, 0xFF3700B3, 0xFF03DAC6, 0xFF018786, 0xFFCF6679, 0xFFB00020, 0xFFFFB74D, 0xFF81C784, 0xFF4FC3F7, 0xFFBA68C8, 0xFF90A4AE, 0xFFFFFFFF, 0xFF000000, 0xFF333333, 0xFFEEEEEE)
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Select Color") }, text = { Column { colors.chunked(4).forEach { chunk -> Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { chunk.forEach { color -> Box(modifier = Modifier.size(48.dp).background(Color(color), shape = MaterialTheme.shapes.small).clickable { onColorSelected(color) }) } }; Spacer(Modifier.height(8.dp)) } } }, confirmButton = { TextButton(onClick = onDismiss) { Text(Localizer.getString("close", lang)) } })
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Seleccionar Color") }, text = { Column { colors.chunked(4).forEach { chunk -> Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { chunk.forEach { color -> Box(modifier = Modifier.size(48.dp).background(Color(color), shape = MaterialTheme.shapes.small).clickable { onColorSelected(color) }) } }; Spacer(Modifier.height(8.dp)) } } }, confirmButton = { TextButton(onClick = onDismiss) { Text(Localizer.getString("close", lang)) } })
 }
 
 @Composable
@@ -621,9 +800,9 @@ fun EventSettingItem(title: String, checked: Boolean, onCheckedChange: (Boolean)
 
 @Composable
 fun SettingsItem(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
-    Surface(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+    Surface(onClick = onClick, modifier = Modifier.fillMaxWidth(), color = Color.Transparent) {
         Row(modifier = Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp)); Spacer(Modifier.width(16.dp))
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp)); Spacer(Modifier.width(16.dp))
             Column { Text(title, style = MaterialTheme.typography.bodyLarge); Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }

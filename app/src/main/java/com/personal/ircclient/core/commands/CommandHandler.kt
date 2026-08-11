@@ -112,21 +112,24 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
         val isStatus = target == "Status"
         
         return mutableListOf<String>().apply {
-            add("NICK")
-            add("AWAY")
-            add("MSG")
-            add("QUIT")
-            
             if (isStatus) {
                 add("JOIN")
                 add("LIST")
                 add("WHOIS")
+                add("NICK")
+                add("AWAY")
+                add("QUIT")
             } else if (isChannel) {
-                add("ME")
-                add("PART")
-                add("NAMES")
+                // Group 1: General Room Info/Tools
                 add("TOPIC")
+                add("NAMES")
                 add("LIST")
+                add("MODE")
+                
+                // Group 2: Action
+                add("ME")
+                
+                // Group 3: User Management (if Op)
                 if (isOp) {
                     add("KICK")
                     add("BAN")
@@ -135,19 +138,26 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
                     add("DEOP")
                     add("VOICE")
                     add("DEVOICE")
-                    add("MODE")
                     add("INVITE")
                 }
+                
+                // Group 4: Account/Global
+                add("NICK")
+                add("AWAY")
+                
+                // Group 5: Exit
+                add("PART")
+                add("QUIT")
             } else { // Private
-                add("ME")
                 add("WHOIS")
                 add("QUERY")
                 add("NOTICE")
+                add("ME")
                 add("IGNORE")
-                add("TIGNORE")
-                add("SILENCE")
-                add("TSILENCE")
                 add("FRIEND")
+                add("NICK")
+                add("AWAY")
+                add("QUIT")
             }
             add("CLEAR")
         }

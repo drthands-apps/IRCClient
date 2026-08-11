@@ -711,41 +711,12 @@ fun ChatDetailScreen(
                                     Icon(Icons.Default.MoreVert, contentDescription = null)
                                 }
                                 DropdownMenu(expanded = showMoreActions, onDismissRequest = { showMoreActions = false }) {
-                                    DropdownMenuItem(
-                                        text = { 
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text("Save Log")
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Checkbox(
-                                                    checked = currentTargetInfo?.saveLog ?: false,
-                                                    onCheckedChange = { 
-                                                        viewModel.setSaveLog(serverId, target, it)
-                                                    }
-                                                )
-                                            }
-                                        },
-                                        onClick = { viewModel.setSaveLog(serverId, target, !(currentTargetInfo?.saveLog ?: false)) }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(Localizer.getString("music_search", lang)) },
-                                        leadingIcon = { Icon(Icons.Default.MusicNote, null) },
-                                        onClick = { 
-                                            showMoreActions = false
-                                            showYoutubeSearch = true 
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(Localizer.getString("quick_search", lang)) },
-                                        leadingIcon = { Icon(Icons.Default.Search, null) },
-                                        onClick = { 
-                                            showMoreActions = false
-                                            showQuickSearch = true
-                                        }
-                                    )
-                                    HorizontalDivider()
-                                    
                                     val availableCommands = viewModel.getAvailableCommands(serverId, target, amIOp)
                                     availableCommands.forEach { cmd ->
+                                        if (cmd == "PART" || cmd == "QUIT") {
+                                            HorizontalDivider()
+                                        }
+                                        
                                         DropdownMenuItem(
                                             text = { 
                                                 Text(
@@ -791,6 +762,40 @@ fun ChatDetailScreen(
                                             }
                                         )
                                     }
+                                    
+                                    HorizontalDivider()
+
+                                    DropdownMenuItem(
+                                        text = { 
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text("Save Log")
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Checkbox(
+                                                    checked = currentTargetInfo?.saveLog ?: false,
+                                                    onCheckedChange = { 
+                                                        viewModel.setSaveLog(serverId, target, it)
+                                                    }
+                                                )
+                                            }
+                                        },
+                                        onClick = { viewModel.setSaveLog(serverId, target, !(currentTargetInfo?.saveLog ?: false)) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(Localizer.getString("music_search", lang)) },
+                                        leadingIcon = { Icon(Icons.Default.MusicNote, null) },
+                                        onClick = { 
+                                            showMoreActions = false
+                                            showYoutubeSearch = true 
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(Localizer.getString("quick_search", lang)) },
+                                        leadingIcon = { Icon(Icons.Default.Search, null) },
+                                        onClick = { 
+                                            showMoreActions = false
+                                            showQuickSearch = true
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -870,10 +875,11 @@ fun ChatDetailScreen(
                         }
                         var showNickSuggestions by remember { mutableStateOf(false) }
                         val suggestions = remember(textFieldValue.text, channelUsers) {
-                            val lastWord = textFieldValue.text.substringBeforeLast(" ", "").let { 
-                                textFieldValue.text.substring(it.length).trim() 
+                            val text = textFieldValue.text
+                            val lastWord = text.substringBeforeLast(" ", "").let { 
+                                text.substring(it.length).trim() 
                             }
-                            if (lastWord.startsWith("@") && lastWord.length > 1) {
+                            if ((lastWord.startsWith("@") || lastWord.startsWith(":")) && lastWord.length > 1) {
                                 val query = lastWord.substring(1).lowercase()
                                 channelUsers.filter { it.nickname.lowercase().contains(query) }.map { it.nickname }
                             } else emptyList()
@@ -930,10 +936,15 @@ fun ChatDetailScreen(
                                             ListItem(
                                                 headlineContent = { Text(nick) },
                                                 modifier = Modifier.clickable {
-                                                    val text = textFieldValue.text
-                                                    val lastWordStart = text.lastIndexOf("@")
-                                                    val newText = text.substring(0, lastWordStart) + nick
-                                                    textFieldValue = TextFieldValue(newText + " ", TextRange(newText.length + 1))
+                                                    val rawText = textFieldValue.text
+                                                    val lastAt = rawText.lastIndexOf("@")
+                                                    val lastColon = rawText.lastIndexOf(":")
+                                                    val lastWordStart = if (lastAt >= 0 || lastColon >= 0) maxOf(lastAt, lastColon) else -1
+                                                    
+                                                    if (lastWordStart != -1) {
+                                                        val newText = rawText.substring(0, lastWordStart) + nick
+                                                        textFieldValue = TextFieldValue(newText + " ", TextRange(newText.length + 1))
+                                                    }
                                                     showNickSuggestions = false
                                                 }
                                             )
@@ -1232,7 +1243,11 @@ fun MessageBubble(
                                     Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color.Green)
                                     Spacer(modifier = Modifier.width(4.dp))
                                 }
-                                Text(text = msg.sender, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = if (senderPrefix.isNotEmpty()) "$senderPrefix${msg.sender}" else msg.sender, 
+                                    style = MaterialTheme.typography.labelSmall, 
+                                    fontWeight = FontWeight.Bold
+                                )
                                 if (isFriend) {
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(12.dp))
@@ -1577,7 +1592,11 @@ fun MessageBubble(
             } else if (isMe) {
                 DropdownMenuItem(
                     text = { Text("Change Nickname") },
-                    onClick = { showMenu = false; onAction("/NICK ") }
+                    onClick = { 
+                        showMenu = false
+                        val cmd = "/NICK "
+                        onTextChange(TextFieldValue(cmd, TextRange(cmd.length)))
+                    }
                 )
             }
         }
