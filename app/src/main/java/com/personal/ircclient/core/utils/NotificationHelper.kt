@@ -8,9 +8,11 @@ import com.personal.ircclient.data.local.entities.SettingsEntity
 
 object NotificationHelper {
     fun playNotificationSound(context: Context, settings: SettingsEntity) {
-        // This is a generic sound player. In a real app, we'd check which specific sound to play.
         try {
-            val notification = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            var notification = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            if (notification == null) {
+                notification = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            }
             val r = RingtoneManager.getRingtone(context, notification)
             r.play()
         } catch (e: Exception) {

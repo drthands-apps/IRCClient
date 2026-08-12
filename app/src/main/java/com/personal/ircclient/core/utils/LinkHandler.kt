@@ -7,7 +7,11 @@ import com.personal.ircclient.data.local.entities.SettingsEntity
 
 object LinkHandler {
     fun openLink(context: Context, url: String, settings: SettingsEntity) {
-        if (!settings.openLinksExternally) return
+        if (!settings.openLinksExternally) {
+            // Block all external links including manual/tutorials if disabled in security
+            android.widget.Toast.makeText(context, "External links are disabled in security settings.", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
         
         try {
             val uri = Uri.parse(url)

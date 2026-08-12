@@ -34,6 +34,8 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
             "INVITE" -> { invite(params); true }
             "AWAY" -> { away(params); true }
             "BACK" -> { back(); true }
+            "STATUS_AWAY" -> { engine.send("AWAY :$params"); true } // Force away state
+            "STATUS_BACK" -> { engine.send("AWAY"); true } // Clear away state
             "NOTICE" -> { notice(params); true }
             "CTCP" -> { ctcp(params); true }
             "NOTIFY" -> { notify(params); true }
@@ -107,7 +109,7 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
         }
     }
     
-    fun getAvailableCommands(target: String, isOp: Boolean): List<String> {
+    fun getAvailableCommands(target: String, isOp: Boolean, isAway: Boolean = false): List<String> {
         val isChannel = target.startsWith("#")
         val isStatus = target == "Status"
         
@@ -117,7 +119,7 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
                 add("LIST")
                 add("WHOIS")
                 add("NICK")
-                add("AWAY")
+                add(if (isAway) "BACK" else "AWAY")
                 add("QUIT")
             } else if (isChannel) {
                 // Group 1: General Room Info/Tools
@@ -125,9 +127,6 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
                 add("NAMES")
                 add("LIST")
                 add("MODE")
-                
-                // Group 2: Action
-                add("ME")
                 
                 // Group 3: User Management (if Op)
                 if (isOp) {
@@ -141,10 +140,6 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
                     add("INVITE")
                 }
                 
-                // Group 4: Account/Global
-                add("NICK")
-                add("AWAY")
-                
                 // Group 5: Exit
                 add("PART")
                 add("QUIT")
@@ -152,11 +147,8 @@ class CommandHandler(private val engine: IrcEngine, private val repository: IrcR
                 add("WHOIS")
                 add("QUERY")
                 add("NOTICE")
-                add("ME")
                 add("IGNORE")
                 add("FRIEND")
-                add("NICK")
-                add("AWAY")
                 add("QUIT")
             }
             add("CLEAR")

@@ -207,7 +207,7 @@ fun ChatListItem(
                 Icon(
                     imageVector = if (targetInfo.isFavorite == true) Icons.Default.Star else Icons.Default.StarOutline,
                     contentDescription = "Favorite",
-                    tint = if (targetInfo.isFavorite == true) Color(0xFFFFD700) else Color.Gray,
+                    tint = if (targetInfo.isFavorite == true) Color(0xFFFF4500) else Color.Gray, // Contrast Orange-Red
                     modifier = Modifier.size(20.dp)
                 )
             }

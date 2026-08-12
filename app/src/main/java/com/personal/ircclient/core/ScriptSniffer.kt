@@ -1,6 +1,7 @@
 package com.personal.ircclient.core
 
 import android.util.Log
+import com.personal.ircclient.BuildConfig
 import com.personal.ircclient.core.model.IrcMessage
 import com.personal.ircclient.data.local.entities.ScriptEntity
 import com.personal.ircclient.data.repository.IrcRepository
@@ -20,10 +21,15 @@ class ScriptSniffer(private val repository: IrcRepository?) {
     }
 
     fun refreshScripts() {
+        if (BuildConfig.FLAVOR == "lite") {
+            activeScripts = emptyList()
+            return
+        }
         scope.launch {
             val scripts = repository?.getActiveScripts() ?: emptyList()
             activeScripts = scripts
-            Log.d("ScriptSniffer", "Scripts refreshed: ${scripts.size} active scripts loaded")
+            Log.i("ScriptSniffer", "Scripts refreshed: ${scripts.size} active scripts loaded")
+            scripts.forEach { Log.i("ScriptSniffer", " - Active script: [${it.name}] content: ${it.content.take(20)}...") }
         }
     }
 
@@ -41,25 +47,33 @@ class ScriptSniffer(private val repository: IrcRepository?) {
      * %T (Target), %N (My Nick), %A (Arguments)
      */
     fun onOutgoingMessage(raw: String, target: String? = null, myNick: String? = null): String? {
+        if (BuildConfig.FLAVOR == "lite") return raw
+
         var result = raw
+        val normalizedInput = raw.trim()
+        Log.i("ScriptSniffer", "Processing outgoing: '$normalizedInput' (Target: $target, Active Scripts: ${activeScripts.size})")
         
         // Execute outgoing aliases
-        activeScripts.filter { it.triggerType == "ALL" || it.triggerType == "OUTGOING" }.forEach { script ->
+        activeScripts.filter { it.isActive && (it.triggerType == "ALL" || it.triggerType == "OUTGOING") }.forEach { script ->
             val lines = script.content.split("\n")
             lines.forEach { line ->
-                if (line.trim().startsWith("OUT: ")) {
-                    val content = line.trim().removePrefix("OUT: ").trim()
+                val trimmedLine = line.trim()
+                if (trimmedLine.startsWith("OUT: ")) {
+                    val content = trimmedLine.removePrefix("OUT: ").trim()
                     val parts = content.split(" -> ", limit = 2)
                     if (parts.size == 2) {
                         val alias = parts[0].trim()
                         val replacement = parts[1].trim()
                         
-                        // Check if result matches alias or start with alias + space
-                        val isMatch = result.equals(alias, ignoreCase = true) || 
-                                     result.startsWith("$alias ", ignoreCase = true)
+                        // Flexible matching: check for /, !, . or no prefix
+                        val cleanAlias = alias.removePrefix("/").removePrefix("!").removePrefix(".")
+                        val cleanInput = normalizedInput.removePrefix("/").removePrefix("!").removePrefix(".")
+                        
+                        val isMatch = cleanInput.equals(cleanAlias, ignoreCase = true) || 
+                                     cleanInput.startsWith("$cleanAlias ", ignoreCase = true)
                         
                         if (isMatch) {
-                            val args = if (result.length > alias.length) result.substring(alias.length).trim() else ""
+                            val args = if (cleanInput.length > cleanAlias.length) cleanInput.substring(cleanAlias.length).trim() else ""
                             
                             var finalReplacement = replacement
                             if (target != null) finalReplacement = finalReplacement.replace("%T", target)
@@ -67,7 +81,7 @@ class ScriptSniffer(private val repository: IrcRepository?) {
                             finalReplacement = finalReplacement.replace("%A", args)
                             
                             result = finalReplacement
-                            Log.d("ScriptSniffer", "Applied script [${script.name}]: $alias -> $result")
+                            Log.i("ScriptSniffer", "SUCCESS! Script [${script.name}] matched alias '$alias'. Replacement: '$result'")
                         }
                     }
                 }

@@ -20,5 +20,9 @@ data class IrcConfig(
     
     // Bouncer
     val useBouncer: Boolean = false,
-    val bouncerNetwork: String? = null
+    val bouncerNetwork: String? = null,
+    
+    // Extensions
+    val email: String? = null,
+    val onConnectCommands: String? = null
 )

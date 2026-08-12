@@ -96,7 +96,9 @@ class IrcRepository(
 
     // Users
     fun getUsersForServer(serverId: Long): Flow<List<UserEntity>> = userDao.getUsersForServer(serverId)
+    fun getFriendsForServer(serverId: Long): Flow<List<UserEntity>> = userDao.getFriendsForServer(serverId)
     suspend fun getUser(nickname: String, serverId: Long) = userDao.getUser(nickname, serverId)
+    fun getUserFlow(nickname: String, serverId: Long): Flow<UserEntity?> = userDao.getUserFlow(nickname, serverId)
     suspend fun insertUser(user: UserEntity) = userDao.insertUser(user)
     suspend fun deleteUser(user: UserEntity) = userDao.deleteUser(user)
     
@@ -116,12 +118,13 @@ class IrcRepository(
 
     // ASCII Art & Phrases
     val asciiArt = asciiArtDao.getAll()
-    suspend fun insertAsciiArt(item: AsciiArtEntity) {
-        val count = asciiArtDao.getCount()
-        if (count == 0L) {
+    suspend fun insertAsciiArt(item: AsciiArtEntity) = asciiArtDao.insert(item)
+
+    suspend fun checkAndInsertDefaultAscii() {
+        val existing = asciiArtDao.getAll().first()
+        if (existing.isEmpty()) {
             insertDefaultAscii()
         }
-        asciiArtDao.insert(item)
     }
 
     private suspend fun insertDefaultAscii() {
@@ -142,30 +145,38 @@ class IrcRepository(
     suspend fun checkAndInsertDefaultScripts() {
         val count = scriptDao.getAllScripts().first().size
         if (count == 0) {
+            val isLite = com.personal.ircclient.BuildConfig.FLAVOR == "lite"
+            val defaultState = !isLite
+
             insertScript(ScriptEntity(
                 name = "Quick Greet",
                 content = "OUT: /hi -> PRIVMSG %T :Hello everyone! Greetings from %N.",
-                triggerType = "OUTGOING"
+                triggerType = "OUTGOING",
+                isActive = defaultState
             ))
             insertScript(ScriptEntity(
                 name = "Coffee Script",
                 content = "OUT: /cafe -> PRIVMSG %T :☕ Serving a hot coffee for %A! Enjoy.",
-                triggerType = "OUTGOING"
+                triggerType = "OUTGOING",
+                isActive = defaultState
             ))
             insertScript(ScriptEntity(
                 name = "Flower Script",
                 content = "OUT: /flower -> PRIVMSG %T :\\u000303\\\\|/\\u000f \\u000313(@)\\u000f A beautiful flower for %A!",
-                triggerType = "OUTGOING"
+                triggerType = "OUTGOING",
+                isActive = defaultState
             ))
             insertScript(ScriptEntity(
                 name = "Private Msg Alias",
                 content = "OUT: /p -> PRIVMSG %A",
-                triggerType = "OUTGOING"
+                triggerType = "OUTGOING",
+                isActive = defaultState
             ))
             insertScript(ScriptEntity(
                 name = "Slap Action",
                 content = "OUT: /slap -> PRIVMSG %T :\u0001ACTION slaps %A around a bit with a large trout\u0001",
-                triggerType = "OUTGOING"
+                triggerType = "OUTGOING",
+                isActive = defaultState
             ))
         }
     }

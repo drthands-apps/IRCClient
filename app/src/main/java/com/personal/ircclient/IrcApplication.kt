@@ -46,7 +46,11 @@ class IrcApplication : Application() {
         applicationScope.launch(Dispatchers.IO) {
             insertDefaultServers()
             repository.checkAndInsertDefaultScripts()
+            repository.checkAndInsertDefaultAscii()
             repository.checkAndInsertDefaultRadioStations()
+            
+            // Critical: Force sniffer to load the newly inserted default scripts
+            ircManager.refreshScripts()
         }
     }
 
@@ -79,50 +83,10 @@ class IrcApplication : Application() {
                 useSsl = true
             ))
             repository.insertServer(com.personal.ircclient.data.local.entities.ServerEntity(
-                name = "OFTC",
-                host = "irc.oftc.net",
-                port = 6697,
-                nickname = "FenixUser",
-                useSsl = true
-            ))
-            repository.insertServer(com.personal.ircclient.data.local.entities.ServerEntity(
                 name = "DALnet",
                 host = "irc.dal.net",
                 port = 6667,
                 nickname = "FenixUser"
-            ))
-            repository.insertServer(com.personal.ircclient.data.local.entities.ServerEntity(
-                name = "QuakeNet",
-                host = "irc.quakenet.org",
-                port = 6667,
-                nickname = "FenixUser"
-            ))
-            repository.insertServer(com.personal.ircclient.data.local.entities.ServerEntity(
-                name = "Rizon",
-                host = "irc.rizon.net",
-                port = 6697,
-                nickname = "FenixUser",
-                useSsl = true
-            ))
-            repository.insertServer(com.personal.ircclient.data.local.entities.ServerEntity(
-                name = "Undernet",
-                host = "irc.undernet.org",
-                port = 6667,
-                nickname = "FenixUser"
-            ))
-            repository.insertServer(com.personal.ircclient.data.local.entities.ServerEntity(
-                name = "IrcNow",
-                host = "irc.ircnow.org",
-                port = 6697,
-                nickname = "FenixUser",
-                useSsl = true
-            ))
-            repository.insertServer(com.personal.ircclient.data.local.entities.ServerEntity(
-                name = "MindForge",
-                host = "irc.mindforge.org",
-                port = 6697,
-                nickname = "FenixUser",
-                useSsl = true
             ))
         }
     }
