@@ -11,6 +11,7 @@ import com.personal.ircclient.data.local.dao.TargetInfo
 import com.personal.ircclient.data.local.entities.*
 import com.personal.ircclient.data.repository.IrcRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -48,6 +49,11 @@ class ChatsViewModel(
 
     var banDisplayMode by mutableStateOf(EventDisplayMode.ROOM)
         private set
+    
+    var isAway by mutableStateOf(false)
+        private set
+
+    private val messageJobs = mutableMapOf<Long, Job>()
 
     init {
         viewModelScope.launch {
@@ -68,15 +74,27 @@ class ChatsViewModel(
 
         viewModelScope.launch {
             ircManager.activeServers.collect { serverIds ->
+                // Clean up jobs for servers that are no longer active
+                val currentJobIds = messageJobs.keys.toList()
+                currentJobIds.forEach { id ->
+                    if (id !in serverIds) {
+                        messageJobs[id]?.cancel()
+                        messageJobs.remove(id)
+                    }
+                }
+
+                // Start jobs for new active servers
                 serverIds.forEach { serverId ->
-                    val engine = ircManager.getEngine(serverId) ?: return@forEach
-                    launch {
-                        engine.messages.collect { msg ->
-                            if (isTtsActive && msg.command == "PRIVMSG") {
-                                val sender = msg.prefix?.substringBefore("!") ?: "Unknown"
-                                val text = msg.parameters.getOrNull(1) ?: ""
-                                if (!text.startsWith("[ENC]")) {
-                                    ttsManager?.speak("$sender says: $text")
+                    if (!messageJobs.containsKey(serverId)) {
+                        val engine = ircManager.getEngine(serverId) ?: return@forEach
+                        messageJobs[serverId] = launch {
+                            engine.messages.collect { msg ->
+                                if (isTtsActive && msg.command == "PRIVMSG") {
+                                    val sender = msg.prefix?.substringBefore("!") ?: "Unknown"
+                                    val text = msg.parameters.getOrNull(1) ?: ""
+                                    if (!text.startsWith("ENC:")) {
+                                        ttsManager?.speak("$sender says: $text")
+                                    }
                                 }
                             }
                         }
@@ -177,6 +195,28 @@ class ChatsViewModel(
         viewModelScope.launch {
             val quitMsg = settingsState.value.defaultQuitMessage
             ircManager.disconnectAll(quitMsg)
+            
+            // Reset all server unread counts (Status messages)
+            val servers = repository.allServers.first()
+            servers.forEach { server ->
+                val statusChannel = repository.getChannel(server.id, "Status")
+                if (statusChannel != null) {
+                    repository.updateChannel(statusChannel.copy(unreadCount = 0))
+                }
+            }
+        }
+    }
+
+    fun disconnectServer(serverId: Long) {
+        viewModelScope.launch {
+            val quitMsg = settingsState.value.defaultQuitMessage
+            ircManager.disconnect(serverId, quitMsg)
+            
+            // Reset Status unread for this server
+            val statusChannel = repository.getChannel(serverId, "Status")
+            if (statusChannel != null) {
+                repository.updateChannel(statusChannel.copy(unreadCount = 0))
+            }
         }
     }
 
@@ -426,28 +466,41 @@ class ChatsViewModel(
 
     fun closeChat(serverId: Long, target: String) {
         viewModelScope.launch {
+            val engine = ircManager.getEngine(serverId)
+            engine?.markTargetAsClosed(target)
+            
             val channel = repository.getChannel(serverId, target)
             val settings = settingsState.value
             if (channel != null && channel.isJoined) {
-                val engine = ircManager.getEngine(serverId)
                 engine?.send("PART $target :${settings.defaultPartMessage}")
             }
             
             // Delete history and reset visits so it disappears from the list
             repository.clearHistory(serverId, target)
             
-            // Clean up BOTH tables to ensure it disappears (due to previous phantom record bug)
             if (channel != null) {
-                if (!channel.saveLog || !isChannel(target)) {
+                // Refined logic: If it's a favorite, keep the entity but reset it
+                // If not favorite and no saveLog, delete it to clean up the UI
+                if (channel.isFavorite) {
+                    repository.updateChannel(channel.copy(unreadCount = 0, isJoined = false, lastVisited = 0))
+                } else if (!channel.saveLog) {
                     repository.deleteChannel(channel)
                 } else {
                     repository.updateChannel(channel.copy(unreadCount = 0, isJoined = false, lastVisited = 0))
                 }
-            }
-            
-            val user = repository.getUser(target, serverId)
-            if (user != null) {
-                repository.insertUser(user.copy(lastVisited = 0, unreadCount = 0))
+            } else {
+                // For private chats (users)
+                val user = repository.getUser(target, serverId)
+                if (user != null) {
+                    // Reset to 0 and remove lastVisited to hide from active list
+                    // But keep the user record if it's a friend
+                    if (user.isFriend || user.isFavorite) {
+                        repository.insertUser(user.copy(lastVisited = 0, unreadCount = 0))
+                    } else {
+                        // Just hide it
+                        repository.insertUser(user.copy(lastVisited = 0, unreadCount = 0))
+                    }
+                }
             }
         }
     }
@@ -500,10 +553,12 @@ class ChatsViewModel(
         
         val filteredUsers = engine.channelUsers.map { it[normalizedName] ?: emptyList() }.distinctUntilChanged()
         val filteredPrefixes = engine.userPrefixes.map { it[normalizedName] ?: emptyMap() }.distinctUntilChanged()
+        val serverUsers = repository.getUsersForServer(serverId).distinctUntilChanged()
 
-        return combine(filteredUsers, filteredPrefixes) { nicks, prefixMap ->
+        return combine(filteredUsers, filteredPrefixes, serverUsers) { nicks, prefixMap, users ->
+            val userMap = users.associateBy { it.nickname }
             nicks.map { nick ->
-                val userEntity = repository.getUser(nick, serverId)
+                val userEntity = userMap[nick]
                 ChannelUserInfo(
                     nickname = nick,
                     prefix = prefixMap[nick] ?: "",
@@ -564,71 +619,102 @@ class ChatsViewModel(
         return if (isChannel(target)) target.lowercase() else target
     }
 
+    fun getFriends(serverId: Long): Flow<Set<String>> = repository.getFriendsForServer(serverId)
+        .map { list -> list.map { it.nickname }.toSet() }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     fun getMessages(serverId: Long, target: String): Flow<List<MessageEntity>> {
         val finalTarget = normalizeTarget(target)
+        
+        // Lower frequency ticker for TTL (5 seconds instead of 1)
         val ticker = flow {
             while (true) {
                 emit(System.currentTimeMillis())
-                delay(1000)
+                delay(5000)
+            }
+        }.conflate()
+        
+        val userFlow = repository.getUserFlow(target, serverId)
+        
+        // Decryption Cache to avoid re-decrypting same messages (Size limited to 200 items)
+        val decryptedCache = object : java.util.LinkedHashMap<Long, MessageEntity>(150, 0.75f, true) {
+            override fun removeEldestEntry(eldest: Map.Entry<Long, MessageEntity>?): Boolean {
+                return size > 200
             }
         }
-        
-        val userFlow = flow { emit(repository.getUser(target, serverId)) }
-        
+
         return combine(repository.getMessagesForTarget(serverId, finalTarget), ticker, userFlow) { messages, currentTime, user ->
             val key = user?.encryptionKey
             
             messages.filter { it.expiryTimestamp == null || it.expiryTimestamp > currentTime }
                 .map { msg ->
-                val decryptedText = if (msg.isEncrypted && key != null) {
-                    EncryptionManager.decrypt(msg.text, key)
-                } else {
-                    msg.text
-                }
-                
-                // Parse media tag: [MEDIA:TYPE:TTL=seconds:DATA] or [MEDIA:TYPE:DATA]
-                if (decryptedText.startsWith("[MEDIA:") && decryptedText.endsWith("]")) {
-                    val content = decryptedText.removePrefix("[MEDIA:").removeSuffix("]")
-                    val parts = content.split(":", limit = 3)
-                    
-                    var type = MessageType.TEXT
-                    var data = ""
-                    var ttl: Long? = null
-                    
-                    if (parts.size >= 2) {
-                        type = try { MessageType.valueOf(parts[0]) } catch(e: Exception) { MessageType.TEXT }
-                        
-                        if (parts.size == 3 && parts[1].startsWith("TTL=")) {
-                            ttl = parts[1].removePrefix("TTL=").toLongOrNull()
-                            data = parts[2]
-                        } else {
-                            data = parts.subList(1, parts.size).joinToString(":")
-                        }
+                    // Return from cache if we already processed this exact message instance
+                    decryptedCache[msg.id]?.let { cached ->
+                        if (cached.text == msg.text && cached.isEncrypted == msg.isEncrypted) return@map cached
                     }
 
-                    if (ttl != null && msg.expiryTimestamp == null) {
-                        // This is the first time we see this TTL, update in DB
-                        viewModelScope.launch {
-                            repository.insertMessage(msg.copy(expiryTimestamp = msg.timestamp + (ttl * 1000)))
-                        }
+                    val decryptedText = (if (msg.isEncrypted && key != null) {
+                        EncryptionManager.decrypt(msg.text, key)
+                    } else {
+                        msg.text
+                    }).trim()
+                    
+                    if (msg.isEncrypted && key != null && decryptedText == msg.text) {
+                        android.util.Log.e("ChatsViewModel", "Decryption failed for msg ${msg.id}")
                     }
-
-                    msg.copy(text = data, type = type)
-                } else {
-                    msg.copy(text = decryptedText)
+                    
+                    val processedMsg = if (decryptedText.startsWith("[MEDIA:", ignoreCase = true) && decryptedText.endsWith("]")) {
+                        parseMediaMessage(msg, decryptedText)
+                    } else {
+                        msg.copy(text = decryptedText)
+                    }
+                    
+                    decryptedCache[msg.id] = processedMsg
+                    processedMsg
                 }
-            }
         }
     }
 
-    fun getUser(serverId: Long, nickname: String): Flow<UserEntity?> = flow { emit(repository.getUser(nickname, serverId)) }
+    private fun parseMediaMessage(msg: MessageEntity, decryptedText: String): MessageEntity {
+        val cleanText = decryptedText.trim()
+        val content = if (cleanText.startsWith("[MEDIA:", ignoreCase = true)) {
+            cleanText.substring(7, cleanText.length - 1)
+        } else {
+            cleanText.removePrefix("[MEDIA:").removeSuffix("]")
+        }
+        val parts = content.split(":", limit = 3)
+        
+        var type = MessageType.TEXT
+        var data = ""
+        var ttl: Long? = null
+        
+        if (parts.size >= 2) {
+            type = try { MessageType.valueOf(parts[0]) } catch(e: Exception) { MessageType.TEXT }
+            
+            if (parts.size == 3 && parts[1].startsWith("TTL=")) {
+                ttl = parts[1].removePrefix("TTL=").toLongOrNull()
+                data = parts[2]
+            } else {
+                data = parts.subList(1, parts.size).joinToString(":")
+            }
+        }
+
+        if (ttl != null && msg.expiryTimestamp == null) {
+            viewModelScope.launch {
+                repository.insertMessage(msg.copy(expiryTimestamp = msg.timestamp + (ttl * 1000)))
+            }
+        }
+
+        return msg.copy(text = data, type = type)
+    }
+
+    fun getUser(serverId: Long, nickname: String): Flow<UserEntity?> = repository.getUserFlow(nickname, serverId)
 
     fun getServerName(serverId: Long): Flow<String> = repository.allServers.map { servers -> servers.find { it.id == serverId }?.name ?: "Server $serverId" }
 
     fun getAvailableCommands(serverId: Long, target: String, isOp: Boolean): List<String> {
         val engine = ircManager.getEngine(serverId)
-        return engine?.getAvailableCommands(target, isOp) ?: emptyList()
+        return engine?.getAvailableCommands(target, isOp, isAway) ?: emptyList()
     }
 
     fun getCurrentNickname(serverId: Long): StateFlow<String> {
@@ -640,8 +726,13 @@ class ChatsViewModel(
         viewModelScope.launch {
             val engine = ircManager.getEngine(serverId)
             if (engine != null) {
-                engine.send("PRIVMSG $nickname :\u0001IRC_SEC_REQ\u0001")
-                repository.insertUser(UserEntity(nickname = nickname, serverId = serverId, secureHandshakeStatus = HandshakeStatus.REQUESTED))
+                engine.send("PRIVMSG $nickname :FENIX_SECURE_REQ")
+                val existing = repository.getUser(nickname, serverId)
+                if (existing != null) {
+                    repository.insertUser(existing.copy(secureHandshakeStatus = HandshakeStatus.REQUESTED))
+                } else {
+                    repository.insertUser(UserEntity(nickname = nickname, serverId = serverId, secureHandshakeStatus = HandshakeStatus.REQUESTED))
+                }
             }
         }
     }
@@ -651,8 +742,14 @@ class ChatsViewModel(
             val engine = ircManager.getEngine(serverId)
             if (engine != null) {
                 val uniqueKey = EncryptionManager.generateRandomKey()
-                engine.send("PRIVMSG $nickname :\u0001IRC_SEC_KEY $uniqueKey\u0001")
-                repository.insertUser(UserEntity(nickname = nickname, serverId = serverId, encryptionKey = uniqueKey, secureHandshakeStatus = HandshakeStatus.COMPLETED))
+                engine.send("PRIVMSG $nickname :FENIX_SECURE_KEY:$uniqueKey")
+                val existing = repository.getUser(nickname, serverId)
+                if (existing != null) {
+                    repository.insertUser(existing.copy(encryptionKey = uniqueKey, secureHandshakeStatus = HandshakeStatus.COMPLETED))
+                } else {
+                    repository.insertUser(UserEntity(nickname = nickname, serverId = serverId, encryptionKey = uniqueKey, secureHandshakeStatus = HandshakeStatus.COMPLETED))
+                }
+                engine.logSystemMessage("Status", "Secure chat key generated and sent to $nickname.")
             }
         }
     }
@@ -691,6 +788,11 @@ class ChatsViewModel(
                          val newTarget = text.substring(7).trim().substringBefore(" ")
                          if (newTarget.isNotEmpty()) repository.insertMessage(MessageEntity(serverId = serverId, target = newTarget, sender = "System", text = "Started query with $newTarget", isSystemMessage = true))
                     }
+
+                    if (text.startsWith("/AWAY ", ignoreCase = true)) isAway = true
+                    if (text.equals("/AWAY", ignoreCase = true)) isAway = true
+                    if (text.equals("/BACK", ignoreCase = true)) isAway = false
+
                     return@launch
                 }
                 
@@ -698,7 +800,7 @@ class ChatsViewModel(
                 
                 val user = repository.getUser(target, serverId)
                 val key = user?.encryptionKey
-                val finalMessage = if (key != null) "[ENC] " + EncryptionManager.encrypt(text, key) else text
+                val finalMessage = if (key != null) "ENC:" + EncryptionManager.encrypt(text, key) else text
                 engine.send("PRIVMSG $target :$finalMessage")
                 val finalTarget = normalizeTarget(target)
                 repository.insertMessage(MessageEntity(serverId = serverId, target = finalTarget, sender = "me", text = if (key != null) EncryptionManager.encrypt(text, key) else text, isEncrypted = key != null, type = MessageType.TEXT))
@@ -713,9 +815,12 @@ class ChatsViewModel(
                 val user = repository.getUser(target, serverId)
                 val key = user?.encryptionKey
                 
+                // Shorten URL if it's from catbox to save IRC bytes
+                val processedData = data.removePrefix("https://files.catbox.moe/")
+                
                 val ttlPrefix = if (ttlSeconds != null) "TTL=$ttlSeconds:" else ""
-                val mediaTag = "[MEDIA:${type.name}:$ttlPrefix$data]"
-                val finalMessage = if (key != null) "[ENC] " + EncryptionManager.encrypt(mediaTag, key) else mediaTag
+                val mediaTag = "[MEDIA:${type.name}:$ttlPrefix$processedData]"
+                val finalMessage = if (key != null) "ENC:" + EncryptionManager.encrypt(mediaTag, key) else mediaTag
                 
                 engine.send("PRIVMSG $target :$finalMessage")
                 val finalTarget = normalizeTarget(target)

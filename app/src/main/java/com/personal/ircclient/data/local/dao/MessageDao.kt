@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface MessageDao {
-    @Query("SELECT * FROM messages WHERE serverId = :serverId AND target = :target ORDER BY timestamp DESC")
+    @Query("SELECT * FROM messages WHERE serverId = :serverId AND target = :target ORDER BY timestamp DESC LIMIT 150")
     fun getMessagesForTarget(serverId: Long, target: String): Flow<List<MessageEntity>>
 
     @Insert

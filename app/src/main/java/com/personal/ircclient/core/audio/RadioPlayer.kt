@@ -25,7 +25,7 @@ object RadioPlayer {
 
         stop()
         
-        exoPlayer = ExoPlayer.Builder(context).build().apply {
+        exoPlayer = ExoPlayer.Builder(context.applicationContext).build().apply {
             // Added support for potentially problematic streams by ensuring basic URI parsing
             val mediaItem = MediaItem.fromUri(Uri.parse(url))
             setMediaItem(mediaItem)

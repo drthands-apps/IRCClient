@@ -10,11 +10,19 @@ import java.util.concurrent.ConcurrentHashMap
 
 class IrcManager(private val context: Context, private val repository: IrcRepository) {
     private val connections = ConcurrentHashMap<Long, IrcEngine>()
+    private val connectionJobs = ConcurrentHashMap<Long, Job>()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    
+    val sniffer: ScriptSniffer = ScriptSniffer(repository)
     
     init {
         scope.launch {
             repository.clearInactiveTargets()
+            // Clean up any remaining WHOIS phantom channels
+            val allChannels = repository.getAllChannels().first()
+            allChannels.filter { it.name.startsWith("WHOIS ") }.forEach {
+                repository.deleteChannel(it)
+            }
         }
         scope.launch {
             repository.settings.collect { s ->
@@ -88,12 +96,12 @@ class IrcManager(private val context: Context, private val repository: IrcReposi
             return existing
         }
         
-        val engine = IrcEngine(context, serverId, config, repository)
+        val engine = IrcEngine(context, serverId, config, repository, sniffer)
         engine.showEventsInRoom = showEventsInRoom
         engine.updateEventSettings(joinMode, partMode, quitMode, nickMode, kickMode, banMode)
         connections[serverId] = engine
         
-        scope.launch {
+        connectionJobs[serverId] = scope.launch {
             engine.connectionStatus.collect { status ->
                 val current = _globalStatuses.value.toMutableMap()
                 current[serverId] = status
@@ -112,7 +120,9 @@ class IrcManager(private val context: Context, private val repository: IrcReposi
     }
 
     fun disconnect(serverId: Long, quitMessage: String? = null) {
-        connections[serverId]?.disconnect(quitMessage)
+        connectionJobs[serverId]?.cancel()
+        connectionJobs.remove(serverId)
+        connections[serverId]?.destroy() // Total cleanup
         connections.remove(serverId)
         _activeServers.value = connections.keys.toSet()
         
@@ -133,9 +143,12 @@ class IrcManager(private val context: Context, private val repository: IrcReposi
     }
     
     fun disconnectAll(quitMessage: String? = null) {
-        connections.values.forEach { it.disconnect(quitMessage) }
+        connectionJobs.values.forEach { it.cancel() }
+        connectionJobs.clear()
+        connections.values.forEach { it.destroy() }
         connections.clear()
         _activeServers.value = emptySet()
+        _globalStatuses.value = emptyMap()
     }
 
     fun updateConfig(serverId: Long, config: IrcConfig) {
@@ -143,6 +156,6 @@ class IrcManager(private val context: Context, private val repository: IrcReposi
     }
 
     fun refreshScripts() {
-        connections.values.forEach { it.refreshScripts() }
+        sniffer.refreshScripts()
     }
 }

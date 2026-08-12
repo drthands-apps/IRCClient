@@ -50,6 +50,9 @@ fun ServerEditScreen(
     
     var useBouncer by remember { mutableStateOf(false) }
     var bouncerNetwork by remember { mutableStateOf("") }
+    
+    var email by remember { mutableStateOf("") }
+    var onConnectCommands by remember { mutableStateOf("") }
 
     LaunchedEffect(existingServer) {
         existingServer?.let {
@@ -72,6 +75,8 @@ fun ServerEditScreen(
             saslPassword = it.saslPassword ?: ""
             useBouncer = it.useBouncer
             bouncerNetwork = it.bouncerNetwork ?: ""
+            email = it.email ?: ""
+            onConnectCommands = it.onConnectCommands ?: ""
         }
     }
 
@@ -123,7 +128,17 @@ fun ServerEditScreen(
             }
             OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text(Localizer.getString("username", lang)) }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = realName, onValueChange = { realName = it }, label = { Text(Localizer.getString("real_name", lang)) }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Email (for registration)") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text(Localizer.getString("server_password", lang)) }, modifier = Modifier.fillMaxWidth())
+
+            SectionTitle("Post-Connection Commands")
+            OutlinedTextField(
+                value = onConnectCommands, 
+                onValueChange = { onConnectCommands = it }, 
+                label = { Text("Commands (one per line)") }, 
+                modifier = Modifier.fillMaxWidth().height(120.dp),
+                placeholder = { Text("/msg NickServ identify pass\n/JOIN #myroom") }
+            )
 
             SectionTitle(Localizer.getString("advanced_sasl", lang))
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
@@ -207,7 +222,9 @@ fun ServerEditScreen(
                             saslUsername = saslUsername.ifBlank { null },
                             saslPassword = saslPassword.ifBlank { null },
                             useBouncer = useBouncer,
-                            bouncerNetwork = bouncerNetwork.ifBlank { null }
+                            bouncerNetwork = bouncerNetwork.ifBlank { null },
+                            email = email.ifBlank { null },
+                            onConnectCommands = onConnectCommands.ifBlank { null }
                         )
                     )
                 },

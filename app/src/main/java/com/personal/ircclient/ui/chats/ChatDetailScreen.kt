@@ -61,6 +61,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,15 +73,14 @@ fun ChatDetailScreen(
     onNavigateToChat: (Long, String) -> Unit,
     onNavigateToDiscovery: (Long) -> Unit
 ) {
-    val messages by viewModel.getMessages(serverId, target).collectAsState(initial = emptyList())
-    val user by viewModel.getUser(serverId, target).collectAsState(initial = null)
+    val messages by remember(serverId, target) { viewModel.getMessages(serverId, target) }.collectAsState(initial = emptyList())
+    val user by remember(serverId, target) { viewModel.getUser(serverId, target) }.collectAsState(initial = null)
     val channelUsers by remember(serverId, target) { viewModel.getChannelUsersWithInfo(serverId, target) }.collectAsState(initial = emptyList())
     val activeTargets by viewModel.activeTargets.collectAsState()
     val currentTargetInfo = activeTargets.find { it.target == target && it.serverId == serverId }
     val myNick by viewModel.getCurrentNickname(serverId).collectAsState()
     val amIOp by viewModel.isUserOp(serverId, target, myNick).collectAsState(initial = false)
-    val usersForServer by viewModel.allChatUsers.collectAsState()
-    val friends = usersForServer.filter { it.serverId == serverId && it.isFriend }.map { it.nickname }.toSet()
+    val friends by remember(serverId) { viewModel.getFriends(serverId) }.collectAsState(initial = emptySet())
     val banList by viewModel.getBanList(serverId, target).collectAsState(initial = emptySet())
 
     val settings by viewModel.settingsState.collectAsState()
@@ -93,20 +93,15 @@ fun ChatDetailScreen(
         }
     }
 
-    DisposableEffect(serverId, target) {
-        onDispose {
-            viewModel.onLeaveChat(serverId)
-        }
-    }
+    val contextAndroid = androidx.compose.ui.platform.LocalContext.current
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
 
     var textFieldValue by remember { mutableStateOf(TextFieldValue("")) }
     val isStatus = target == "Status"
     val isChannel = target.startsWith("#")
     val isUser = !isStatus && !isChannel
-    val isPro = com.personal.ircclient.BuildConfig.FLAVOR == "pro"
-    
-    val contextAndroid = androidx.compose.ui.platform.LocalContext.current
-    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val isPro = com.personal.ircclient.BuildConfig.FLAVOR == "pro" || 
+                contextAndroid.packageName.contains(".pro", ignoreCase = true)
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -114,6 +109,15 @@ fun ChatDetailScreen(
 
     val recorder = remember { AudioRecorder(contextAndroid) }
     var isRecording by remember { mutableStateOf(false) }
+
+    DisposableEffect(serverId, target) {
+        onDispose {
+            if (isRecording) {
+                recorder.stopRecording()
+            }
+            viewModel.onLeaveChat(serverId)
+        }
+    }
     
     val recordPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -129,9 +133,43 @@ fun ChatDetailScreen(
     var showQuickSearch by remember { mutableStateOf(false) }
     var showFormattingTools by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
+    var showMultimediaWarning by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var isProcessingMedia by remember { mutableStateOf(false) }
     var showAsciiSelector by remember { mutableStateOf<String?>(null) } // target user nick
     var searchQuery by remember { mutableStateOf("") }
     val asciiArtItems by viewModel.asciiArt.collectAsState()
+
+    if (isProcessingMedia) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text(Localizer.getString("processing", lang)) },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(16.dp))
+                    Text(Localizer.getString("waiting_media", lang))
+                }
+            },
+            confirmButton = { }
+        )
+    }
+
+    if (showMultimediaWarning != null) {
+        AlertDialog(
+            onDismissRequest = { showMultimediaWarning = null },
+            title = { Text("Compatibility Warning") },
+            text = { Text("To view images, audio, or files correctly, the recipient must also be using FenixIRC. Standard IRC clients will only see a text link. Do you want to proceed?") },
+            confirmButton = {
+                Button(onClick = { 
+                    showMultimediaWarning?.invoke()
+                    showMultimediaWarning = null 
+                }) { Text("Proceed") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMultimediaWarning = null }) { Text(Localizer.getString("cancel", lang)) }
+            }
+        )
+    }
 
     if (showAsciiSelector != null) {
         AlertDialog(
@@ -148,6 +186,9 @@ fun ChatDetailScreen(
                                 supportingContent = { Text(if (item.isPhrase) "Phrase" else "ASCII Art") },
                                 modifier = Modifier.clickable {
                                     viewModel.sendAsciiArt(serverId, showAsciiSelector!!, item)
+                                    if (showAsciiSelector != target) {
+                                        onNavigateToChat(serverId, showAsciiSelector!!)
+                                    }
                                     showAsciiSelector = null
                                 }
                             )
@@ -315,21 +356,33 @@ fun ChatDetailScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let {
-            val inputStream = contextAndroid.contentResolver.openInputStream(it)
-            val bitmap = BitmapFactory.decodeStream(inputStream)
-            val watermarked = ImageUtils.addWatermark(bitmap, "IRCClient Secure")
-            
-            if (isUser && isPro) {
-                val tempFile = java.io.File(contextAndroid.cacheDir, "upload_${System.currentTimeMillis()}.jpg")
-                val fos = java.io.FileOutputStream(tempFile)
-                watermarked.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, fos)
-                fos.close()
-                
-                FileUploader.uploadFile(tempFile) { url ->
-                    if (url != null) {
-                        mediaToSend = MessageType.IMAGE to url
-                        showTtlDialog = true
+            isProcessingMedia = true
+            scope.launch(Dispatchers.IO) {
+                try {
+                    val inputStream = contextAndroid.contentResolver.openInputStream(it)
+                    val bitmap = BitmapFactory.decodeStream(inputStream)
+                    val watermarked = ImageUtils.addWatermark(bitmap, "IRCClient Secure")
+                    
+                    if (isUser && isPro) {
+                        val tempFile = java.io.File(contextAndroid.cacheDir, "upload_${System.currentTimeMillis()}.jpg")
+                        val fos = java.io.FileOutputStream(tempFile)
+                        watermarked.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, fos)
+                        fos.close()
+                        
+                        FileUploader.uploadFile(tempFile) { url ->
+                            scope.launch(Dispatchers.Main) {
+                                if (url != null) {
+                                    mediaToSend = MessageType.IMAGE to url
+                                    showTtlDialog = true
+                                }
+                                isProcessingMedia = false
+                            }
+                        }
+                    } else {
+                        scope.launch(Dispatchers.Main) { isProcessingMedia = false }
                     }
+                } catch (e: Exception) {
+                    scope.launch(Dispatchers.Main) { isProcessingMedia = false }
                 }
             }
         }
@@ -339,20 +392,32 @@ fun ChatDetailScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let {
-            val inputStream = contextAndroid.contentResolver.openInputStream(it)
-            val bytes = inputStream?.readBytes() ?: return@let
-            
-            if (isUser && isPro) {
-                val tempFile = java.io.File(contextAndroid.cacheDir, "audio_${System.currentTimeMillis()}.m4a")
-                val fos = java.io.FileOutputStream(tempFile)
-                fos.write(bytes)
-                fos.close()
-                
-                FileUploader.uploadFile(tempFile) { url ->
-                    if (url != null) {
-                        mediaToSend = MessageType.VOICE to url
-                        showTtlDialog = true
+            isProcessingMedia = true
+            scope.launch(Dispatchers.IO) {
+                try {
+                    val inputStream = contextAndroid.contentResolver.openInputStream(it)
+                    val bytes = inputStream?.readBytes() ?: return@launch
+                    
+                    if (isUser && isPro) {
+                        val tempFile = java.io.File(contextAndroid.cacheDir, "audio_${System.currentTimeMillis()}.m4a")
+                        val fos = java.io.FileOutputStream(tempFile)
+                        fos.write(bytes)
+                        fos.close()
+                        
+                        FileUploader.uploadFile(tempFile) { url ->
+                            scope.launch(Dispatchers.Main) {
+                                if (url != null) {
+                                    mediaToSend = MessageType.VOICE to url
+                                    showTtlDialog = true
+                                }
+                                isProcessingMedia = false
+                            }
+                        }
+                    } else {
+                        scope.launch(Dispatchers.Main) { isProcessingMedia = false }
                     }
+                } catch (e: Exception) {
+                    scope.launch(Dispatchers.Main) { isProcessingMedia = false }
                 }
             }
         }
@@ -362,26 +427,38 @@ fun ChatDetailScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let {
-            val cursor = contextAndroid.contentResolver.query(it, null, null, null, null)
-            val nameIndex = cursor?.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-            cursor?.moveToFirst()
-            val fileName = cursor?.getString(nameIndex ?: -1) ?: "file_${System.currentTimeMillis()}"
-            cursor?.close()
+            isProcessingMedia = true
+            scope.launch(Dispatchers.IO) {
+                try {
+                    val cursor = contextAndroid.contentResolver.query(it, null, null, null, null)
+                    val nameIndex = cursor?.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    cursor?.moveToFirst()
+                    val fileName = cursor?.getString(nameIndex ?: -1) ?: "file_${System.currentTimeMillis()}"
+                    cursor?.close()
 
-            val inputStream = contextAndroid.contentResolver.openInputStream(it)
-            val bytes = inputStream?.readBytes() ?: return@let
-            
-            if (isUser && isPro) {
-                val tempFile = java.io.File(contextAndroid.cacheDir, fileName)
-                val fos = java.io.FileOutputStream(tempFile)
-                fos.write(bytes)
-                fos.close()
-                
-                FileUploader.uploadFile(tempFile) { url ->
-                    if (url != null) {
-                        mediaToSend = MessageType.FILE to url
-                        showTtlDialog = true
+                    val inputStream = contextAndroid.contentResolver.openInputStream(it)
+                    val bytes = inputStream?.readBytes() ?: return@launch
+                    
+                    if (isUser && isPro) {
+                        val tempFile = java.io.File(contextAndroid.cacheDir, fileName)
+                        val fos = java.io.FileOutputStream(tempFile)
+                        fos.write(bytes)
+                        fos.close()
+                        
+                        FileUploader.uploadFile(tempFile) { url ->
+                            scope.launch(Dispatchers.Main) {
+                                if (url != null) {
+                                    mediaToSend = MessageType.FILE to url
+                                    showTtlDialog = true
+                                }
+                                isProcessingMedia = false
+                            }
+                        }
+                    } else {
+                        scope.launch(Dispatchers.Main) { isProcessingMedia = false }
                     }
+                } catch (e: Exception) {
+                    scope.launch(Dispatchers.Main) { isProcessingMedia = false }
                 }
             }
         }
@@ -485,7 +562,7 @@ fun ChatDetailScreen(
                                                     )
                                                     if (userInfo.isFriend) {
                                                         Spacer(modifier = Modifier.width(4.dp))
-                                                        Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(14.dp))
+                                                        Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFF4500), modifier = Modifier.size(14.dp))
                                                     }
                                                 }
                                             },
@@ -551,7 +628,7 @@ fun ChatDetailScreen(
                                         )
                                         HorizontalDivider()
                                         DropdownMenuItem(
-                                            text = { Text("Send Art/Phrase") },
+                                            text = { Text("Send Art/Phrase (PV)") },
                                             leadingIcon = { Icon(Icons.Default.ArtTrack, null) },
                                             onClick = { 
                                                 showUserMenu = false
@@ -713,7 +790,7 @@ fun ChatDetailScreen(
                                 DropdownMenu(expanded = showMoreActions, onDismissRequest = { showMoreActions = false }) {
                                     if (isChannel) {
                                         DropdownMenuItem(
-                                            text = { Text("Send Art/Phrase") },
+                                            text = { Text("Send Art/Phrase (General)") },
                                             leadingIcon = { Icon(Icons.Default.ArtTrack, null) },
                                             onClick = { 
                                                 showMoreActions = false
@@ -722,7 +799,7 @@ fun ChatDetailScreen(
                                         )
                                         HorizontalDivider()
                                     }
-
+                                    
                                     val availableCommands = viewModel.getAvailableCommands(serverId, target, amIOp)
                                     availableCommands.forEach { cmd ->
                                         if (cmd == "PART" || cmd == "QUIT") {
@@ -887,9 +964,9 @@ fun ChatDetailScreen(
                         }
                         var showNickSuggestions by remember { mutableStateOf(false) }
                         val suggestions = remember(textFieldValue.text, channelUsers) {
-                            val text = textFieldValue.text
-                            val lastWord = text.substringBeforeLast(" ", "").let { 
-                                text.substring(it.length).trim() 
+                            val rawInputText = textFieldValue.text
+                            val lastWord = rawInputText.substringBeforeLast(" ", "").let { 
+                                rawInputText.substring(it.length).trim()
                             }
                             if ((lastWord.startsWith("@") || lastWord.startsWith(":")) && lastWord.length > 1) {
                                 val query = lastWord.substring(1).lowercase()
@@ -907,10 +984,12 @@ fun ChatDetailScreen(
                                 onValueChange = { textFieldValue = it },
                                 modifier = Modifier.fillMaxWidth(),
                                 placeholder = { Text(if (isStatus) Localizer.getString("enter_command", lang) else Localizer.getString("typing_message", lang)) },
-                                leadingIcon = if (!isStatus && !isChannel && isPro) {
+                                leadingIcon = if (!isStatus && isPro) {
                                     {
                                         Box {
-                                            IconButton(onClick = { showAttachMenu = true }) {
+                                            IconButton(onClick = { 
+                                                showMultimediaWarning = { showAttachMenu = true }
+                                            }) {
                                                 Icon(Icons.Default.Add, contentDescription = null)
                                             }
                                             DropdownMenu(expanded = showAttachMenu, onDismissRequest = { showAttachMenu = false }) {
@@ -943,41 +1022,62 @@ fun ChatDetailScreen(
                                         .fillMaxWidth(),
                                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                                 ) {
-                                    LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
-                                        items(suggestions) { nick ->
-                                            ListItem(
-                                                headlineContent = { Text(nick) },
-                                                modifier = Modifier.clickable {
-                                                    val rawText = textFieldValue.text
-                                                    val lastAt = rawText.lastIndexOf("@")
-                                                    val lastColon = rawText.lastIndexOf(":")
-                                                    val lastWordStart = if (lastAt >= 0 || lastColon >= 0) maxOf(lastAt, lastColon) else -1
-                                                    
-                                                    if (lastWordStart != -1) {
-                                                        val newText = rawText.substring(0, lastWordStart) + nick
-                                                        textFieldValue = TextFieldValue(newText + " ", TextRange(newText.length + 1))
+                                    Card {
+                                        LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
+                                            items(suggestions) { nick ->
+                                                ListItem(
+                                                    headlineContent = { Text(nick) },
+                                                    modifier = Modifier.clickable {
+                                                        val rawInputText = textFieldValue.text
+                                                        val lastAt = rawInputText.lastIndexOf("@")
+                                                        val lastColon = rawInputText.lastIndexOf(":")
+                                                        val lastWordStart = if (lastAt >= 0 || lastColon >= 0) maxOf(lastAt, lastColon) else -1
+                                                        
+                                                        if (lastWordStart != -1) {
+                                                            val isStartOfLine = lastWordStart == 0
+                                                            val replacement = if (isStartOfLine) "$nick: " else "$nick "
+                                                            val newText = rawInputText.substring(0, lastWordStart) + replacement
+                                                            textFieldValue = TextFieldValue(newText, TextRange(newText.length))
+                                                        }
+                                                        showNickSuggestions = false
                                                     }
-                                                    showNickSuggestions = false
-                                                }
-                                            )
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                        if (!isStatus && !isChannel && isPro) {
+                        if (!isStatus && isPro) {
                             IconButton(onClick = { 
                                 if (isRecording) {
-                                    val file = recorder.stopRecording()
-                                    if (file != null) {
-                                        val bytes = file.readBytes()
-                                        val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                                        mediaToSend = MessageType.VOICE to base64
-                                        showTtlDialog = true
+                                    isProcessingMedia = true
+                                    scope.launch(Dispatchers.IO) {
+                                        try {
+                                            val file = recorder.stopRecording()
+                                            if (file != null) {
+                                                // Upload recorded audio instead of sending Base64 (to avoid 512-byte IRC limit)
+                                                FileUploader.uploadFile(file) { url ->
+                                                    scope.launch(Dispatchers.Main) {
+                                                        if (url != null) {
+                                                            mediaToSend = MessageType.VOICE to url
+                                                            showTtlDialog = true
+                                                        }
+                                                        isProcessingMedia = false
+                                                    }
+                                                }
+                                            } else {
+                                                scope.launch(Dispatchers.Main) { isProcessingMedia = false }
+                                            }
+                                        } catch (e: Exception) {
+                                            scope.launch(Dispatchers.Main) { isProcessingMedia = false }
+                                        }
                                     }
                                     isRecording = false
                                 } else {
-                                    recordPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                    showMultimediaWarning = {
+                                        recordPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                    }
                                 }
                             }) {
                                 Icon(
@@ -1081,72 +1181,6 @@ fun ChatDetailScreen(
 }
 
 @Composable
-fun FormattingTools(
-    onFormatClick: (String) -> Unit,
-    onColorClick: (String) -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            IconButton(onClick = { onFormatClick("\u0002") }) { Icon(Icons.Default.FormatBold, "Bold") }
-            IconButton(onClick = { onFormatClick("\u001d") }) { Icon(Icons.Default.FormatItalic, "Italic") }
-            IconButton(onClick = { onFormatClick("\u001f") }) { Icon(Icons.Default.FormatUnderlined, "Underline") }
-            IconButton(onClick = { onFormatClick("\u000f") }) { Icon(Icons.Default.FormatClear, "Reset") }
-        }
-        LazyRow(
-            modifier = Modifier.fillMaxWidth().padding(4.dp),
-            contentPadding = PaddingValues(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            items(IrcColorMap.keys.toList().filter { it.length == 2 }.distinct()) { code ->
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .background(IrcColorMap[code]!!, shape = MaterialTheme.shapes.small)
-                        .clickable { onColorClick(code) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun StatusQuickActions(
-    currentText: String,
-    onTextChange: (String) -> Unit,
-    onAction: (String) -> Unit
-) {
-    val commands = listOf(
-        "/LIST" to "List Channels",
-        "/MOTD" to "MOTD",
-        "/LUSERS" to "Users",
-        "/STATS" to "Stats",
-        "/WHOIS " to "Whois...",
-        "/HELP" to "Help"
-    )
-
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(commands) { (cmd, label) ->
-            SuggestionChip(
-                onClick = {
-                    if (cmd.endsWith(" ")) {
-                        onTextChange(cmd)
-                    } else {
-                        onAction(cmd)
-                    }
-                },
-                label = { Text(label, fontSize = 12.sp) }
-            )
-        }
-    }
-}
-
-@Composable
 fun MessageBubble(
     msg: MessageEntity,
     serverId: Long,
@@ -1230,18 +1264,20 @@ fun MessageBubble(
                 shape = MaterialTheme.shapes.medium,
                 color = when {
                     msg.type == MessageType.NOTICE -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.8f)
+                    msg.type == MessageType.BAN -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.9f)
                     isMe -> Color(settings.ownBubbleColor)
                     isStatus || isSystem -> MaterialTheme.colorScheme.surfaceVariant
                     else -> Color(settings.otherBubbleColor)
                 },
                 border = when {
                     msg.type == MessageType.NOTICE -> BorderStroke(2.dp, MaterialTheme.colorScheme.tertiary)
+                    msg.type == MessageType.BAN -> BorderStroke(2.dp, MaterialTheme.colorScheme.error)
                     isMe -> BorderStroke(1.dp, Color(settings.otherBubbleColor))
                     else -> null
                 },
-                modifier = Modifier.clickable { showMenu = true }
+                modifier = Modifier.padding(vertical = 4.dp, horizontal = 12.dp).fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(8.dp)) {
+                Column(modifier = Modifier.fillMaxWidth().clickable { showMenu = true }.padding(12.dp)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1262,7 +1298,7 @@ fun MessageBubble(
                                 )
                                 if (isFriend) {
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(12.dp))
+                                    Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFF4500), modifier = Modifier.size(12.dp))
                                 }
                             }
                         } else if (isMe) {
@@ -1440,60 +1476,82 @@ fun MessageBubble(
                     }
                     
                     if (msg.type == MessageType.IMAGE) {
-                        val isUrl = msg.text.startsWith("http")
-                        if (isUrl) {
+                        val isUrl = msg.text.startsWith("http", ignoreCase = true)
+                        // A catbox ID is alphanumeric, contains a dot, and is short (usually < 15 chars)
+                        val isCatboxId = !isUrl && msg.text.contains(".") && msg.text.length < 20 && !msg.text.contains(" ")
+                        val finalUrl = if (isCatboxId) "https://files.catbox.moe/${msg.text.trim()}" else msg.text
+                        
+                        if ((isUrl || isCatboxId) && finalUrl.isNotBlank()) {
                             AsyncImage(
-                                model = msg.text,
+                                model = finalUrl,
                                 contentDescription = null,
                                 modifier = Modifier
                                     .padding(top = 8.dp)
                                     .fillMaxWidth()
                                     .heightIn(max = 300.dp)
                                     .clickable {
-                                        LinkHandler.openLink(contextAndroid, msg.text, settings)
+                                        LinkHandler.openLink(contextAndroid, finalUrl, settings)
                                     }
                             )
                         } else {
-                            val bitmap = remember(msg.text) {
-                                try {
-                                    val bytes = Base64.decode(msg.text, Base64.DEFAULT)
-                                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                                } catch (e: Exception) { null }
-                            }
+                            // Fallback for Base64 (legacy or direct small images)
+                            // Skip if string is suspiciously long to avoid OOM
+                            val isLikelyBase64 = msg.text.length < 50000 && !msg.text.contains(" ") && msg.text.length > 20
+                            
+                            val bitmap = if (isLikelyBase64) {
+                                remember(msg.text) {
+                                    try {
+                                        val bytes = Base64.decode(msg.text.trim(), Base64.DEFAULT)
+                                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                    } catch (e: Exception) { null }
+                                }
+                            } else null
+
                             bitmap?.let {
                                 Image(
                                     bitmap = it.asImageBitmap(),
                                     contentDescription = null,
                                     modifier = Modifier.size(150.dp).padding(top = 8.dp)
                                 )
-                            }
+                            } ?: Text(text = "[Image could not be loaded]", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                         }
                     } else if (msg.type == MessageType.VOICE) {
-                        val isUrl = msg.text.startsWith("http")
+                        val isUrl = msg.text.startsWith("http", ignoreCase = true)
+                        val isCatboxId = !isUrl && msg.text.contains(".") && msg.text.length < 20 && !msg.text.contains(" ")
+                        val finalUrl = if (isCatboxId) "https://files.catbox.moe/${msg.text.trim()}" else msg.text
+
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
                             Icon(
                                 imageVector = Icons.Default.PlayArrow, 
                                 contentDescription = null,
                                 modifier = Modifier.clickable {
-                                    if (isUrl) {
-                                        LinkHandler.openLink(contextAndroid, msg.text, settings)
+                                    if (isUrl || isCatboxId) {
+                                        LinkHandler.openLink(contextAndroid, finalUrl, settings)
                                     }
                                 }
                             )
-                            Text(if (isUrl) Localizer.getString("voice_message_ext", lang) else Localizer.getString("voice_message", lang), style = MaterialTheme.typography.bodySmall)
+                            Text(if (isUrl || isCatboxId) Localizer.getString("voice_message_ext", lang) else Localizer.getString("voice_message", lang), style = MaterialTheme.typography.bodySmall)
                         }
                     } else if (msg.type == MessageType.FILE) {
+                        val isUrl = msg.text.startsWith("http", ignoreCase = true)
+                        val isCatboxId = !isUrl && msg.text.contains(".") && msg.text.length < 20 && !msg.text.contains(" ")
+                        val finalUrl = if (isCatboxId) "https://files.catbox.moe/${msg.text.trim()}" else msg.text
+
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
                             Icon(
                                 imageVector = Icons.Default.Description, 
                                 contentDescription = null,
                                 modifier = Modifier.clickable {
-                                    LinkHandler.openLink(contextAndroid, msg.text, settings)
+                                    if (isUrl || isCatboxId) {
+                                        LinkHandler.openLink(contextAndroid, finalUrl, settings)
+                                    }
                                 }
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(Localizer.getString("file_message", lang), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable {
-                                LinkHandler.openLink(contextAndroid, msg.text, settings)
+                                if (isUrl || isCatboxId) {
+                                    LinkHandler.openLink(contextAndroid, finalUrl, settings)
+                                }
                             })
                         }
                     }
@@ -1560,7 +1618,7 @@ fun MessageBubble(
                 )
                 HorizontalDivider()
                 DropdownMenuItem(
-                    text = { Text("Send Art/Phrase") },
+                    text = { Text("Send Art/Phrase (PV)") },
                     leadingIcon = { Icon(Icons.Default.ArtTrack, null) },
                     onClick = { 
                         showMenu = false
@@ -1603,6 +1661,21 @@ fun MessageBubble(
                 }
             } else if (isMe) {
                 DropdownMenuItem(
+                    text = { Text(if (viewModel.isAway) "Set Back" else "Set Away") },
+                    onClick = { 
+                        showMenu = false
+                        onAction(if (viewModel.isAway) "/BACK" else "/AWAY")
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Action (/me)") },
+                    onClick = { 
+                        showMenu = false
+                        val cmd = "/ME "
+                        onTextChange(TextFieldValue(cmd, TextRange(cmd.length)))
+                    }
+                )
+                DropdownMenuItem(
                     text = { Text("Change Nickname") },
                     onClick = { 
                         showMenu = false
@@ -1610,94 +1683,6 @@ fun MessageBubble(
                         onTextChange(TextFieldValue(cmd, TextRange(cmd.length)))
                     }
                 )
-            }
-        }
-    }
-}
-
-fun stripIrcColors(text: String): String {
-    return text.replace(Regex("\u0003\\d{0,2}(,\\d{1,2})?|\u0002|\u001f|\u001d|\u000f|\u0016"), "")
-}
-
-val IrcColorMap = mapOf(
-    "00" to Color(0xFFFFFFFF), "0" to Color(0xFFFFFFFF),  // White
-    "01" to Color(0xFF000000), "1" to Color(0xFF000000),  // Black
-    "02" to Color(0xFF00007F), "2" to Color(0xFF00007F),  // Blue
-    "03" to Color(0xFF009300), "3" to Color(0xFF009300),  // Green
-    "04" to Color(0xFFFF0000), "4" to Color(0xFFFF0000),  // Red
-    "05" to Color(0xFF7F0000), "5" to Color(0xFF7F0000),  // Brown
-    "06" to Color(0xFF9C009C), "6" to Color(0xFF9C009C),  // Purple
-    "07" to Color(0xFFFC7F00), "7" to Color(0xFFFC7F00),  // Orange
-    "08" to Color(0xFFFFFF00), "8" to Color(0xFFFFFF00),  // Yellow
-    "09" to Color(0xFF00FC00), "9" to Color(0xFF00FC00),  // Light Green
-    "10" to Color(0xFF009393),                          // Teal
-    "11" to Color(0xFF00FFFF),                          // Cyan
-    "12" to Color(0xFF0000FC),                          // Light Blue
-    "13" to Color(0xFFFF00FF),                          // Pink
-    "14" to Color(0xFF7F7F7F),                          // Grey
-    "15" to Color(0xFFD2D2D2)                           // Light Grey
-)
-
-fun parseIrcColors(text: String, settings: com.personal.ircclient.data.local.entities.SettingsEntity? = null): AnnotatedString {
-    return buildAnnotatedString {
-        var i = 0
-        var isBold = false
-        var isItalic = false
-        var isUnderline = false
-        var currentColor: Color? = null
-        var currentBg: Color? = null
-        
-        val urlRegex = Regex("(https?://[\\w\\d:#@%/;$()~_?\\+-=\\.&]+)", RegexOption.IGNORE_CASE)
-
-        while (i < text.length) {
-            val char = text[i]
-            when (char) {
-                '\u0002' -> { isBold = !isBold; i++ }
-                '\u001d' -> { isItalic = !isItalic; i++ }
-                '\u001f' -> { isUnderline = !isUnderline; i++ }
-                '\u000f' -> { 
-                    isBold = false; isItalic = false; isUnderline = false
-                    currentColor = null; currentBg = null; i++ 
-                }
-                '\u0003' -> {
-                    i++
-                    val match = Regex("^(\\d{1,2})(,(\\d{1,2}))?").find(text.substring(i))
-                    if (match != null) {
-                        val fgCode = match.groupValues[1]
-                        val bgCode = match.groupValues[3]
-                        currentColor = IrcColorMap[fgCode.padStart(2, '0')]
-                        if (bgCode.isNotEmpty()) currentBg = IrcColorMap[bgCode.padStart(2, '0')]
-                        i += match.value.length
-                    } else {
-                        currentColor = null; currentBg = null
-                    }
-                }
-                else -> {
-                    // Check for URL at current position
-                    val urlMatch = urlRegex.find(text.substring(i))
-                    if (urlMatch != null && urlMatch.range.start == 0) {
-                        val url = urlMatch.value
-                        pushStringAnnotation(tag = "URL", annotation = url)
-                        withStyle(SpanStyle(color = Color(0xFF2196F3), textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)) {
-                            append(url)
-                        }
-                        pop()
-                        i += url.length
-                    } else {
-                        withStyle(
-                            SpanStyle(
-                                fontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal,
-                                fontStyle = if (isItalic) FontStyle.Italic else FontStyle.Normal,
-                                textDecoration = if (isUnderline) androidx.compose.ui.text.style.TextDecoration.Underline else null,
-                                color = currentColor ?: Color.Unspecified,
-                                background = currentBg ?: Color.Transparent
-                            )
-                        ) {
-                            append(char)
-                        }
-                        i++
-                    }
-                }
             }
         }
     }

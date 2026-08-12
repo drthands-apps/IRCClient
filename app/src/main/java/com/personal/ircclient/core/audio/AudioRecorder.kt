@@ -34,13 +34,11 @@ class AudioRecorder(private val context: Context) {
 
     fun stopRecording(): File? {
         try {
-            recorder?.apply {
-                stop()
-                release()
-            }
+            recorder?.stop()
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
+            recorder?.release()
             recorder = null
         }
         return audioFile

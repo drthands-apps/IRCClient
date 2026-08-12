@@ -21,9 +21,9 @@ class IrcEngine(
     private val context: android.content.Context,
     val serverId: Long,
     private var config: IrcConfig,
-    private val repository: IrcRepository? = null
+    private val repository: IrcRepository? = null,
+    private val sniffer: ScriptSniffer
 ) {
-    private val sniffer: ScriptSniffer = ScriptSniffer(repository)
     private val commandHandler = CommandHandler(this, repository)
 
     private var joinMode = EventDisplayMode.ROOM
@@ -73,16 +73,28 @@ class IrcEngine(
         }
     }
 
-    fun refreshScripts() {
-        sniffer.refreshScripts()
-    }
-
     private var socket: Socket? = null
     private var reader: BufferedReader? = null
     private var writer: BufferedWriter? = null
     
     private val _messages = MutableSharedFlow<IrcMessage>()
     val messages: SharedFlow<IrcMessage> = _messages.asSharedFlow()
+
+    private val closedTargets = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    fun markTargetAsClosed(target: String) {
+        closedTargets[normalizeTarget(target)] = System.currentTimeMillis()
+    }
+
+    private fun isTargetRecentlyClosed(target: String): Boolean {
+        val normalized = normalizeTarget(target)
+        val timestamp = closedTargets[normalized] ?: return false
+        if (System.currentTimeMillis() - timestamp > 15000) { // Increased to 15s
+            closedTargets.remove(normalized)
+            return false
+        }
+        return true
+    }
 
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
@@ -176,13 +188,15 @@ class IrcEngine(
                     send("PASS $pass")
                 }
                 send("NICK ${config.nickname}")
-                val realName = settings?.customUserAgent ?: config.realName
+                val baseRealName = if (!settings?.customUserAgent.isNullOrBlank()) settings!!.customUserAgent else "FenixIRC/${com.personal.ircclient.BuildConfig.VERSION_NAME}"
+                val finalRealName = if (!config.email.isNullOrBlank()) "$baseRealName (${config.email})" else baseRealName
+                
                 val username = if (config.useBouncer && config.bouncerNetwork != null && config.password == null) {
                     "${config.username}/${config.bouncerNetwork}"
                 } else {
                     config.username
                 }
-                send("USER $username 0 * :$realName")
+                send("USER $username 0 * :$finalRealName")
 
                 listen()
             } catch (e: Exception) {
@@ -226,6 +240,8 @@ class IrcEngine(
         val target = if (mode == EventDisplayMode.ROOM && channel != null) {
             normalizeTarget(channel)
         } else "Status"
+
+        if (target != "Status" && isTargetRecentlyClosed(target)) return
 
         incrementUnreadCount(target)
 
@@ -357,6 +373,27 @@ class IrcEngine(
                 )
                 motdBuffer.clear()
             }
+            "474" -> { // ERR_BANNEDFROMCHAN
+                val channel = message.parameters.getOrNull(1) ?: return
+                val text = "You are BANNED from channel $channel"
+                android.util.Log.i("IrcEngine", "Handling BAN for $channel")
+                
+                logSystemMessage("Status", text)
+                logSystemMessage(normalizeTarget(channel), text)
+                updateChannelStatus(normalizeTarget(channel), joined = false, banned = true)
+                
+                scope.launch(Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_LONG).show()
+                }
+                scope.launch {
+                    val settingsList = repository?.settings?.firstOrNull()
+                    android.util.Log.i("IrcEngine", "Playing ban sound, enabled=${settingsList?.soundOnBan}")
+                    if (settingsList?.soundOnBan == true) {
+                        NotificationHelper.playNotificationSound(context, settingsList)
+                        NotificationHelper.vibrate(context)
+                    }
+                }
+            }
             "001" -> { // RPL_WELCOME
                 currentNickname = message.parameters.getOrNull(0) ?: config.nickname
                 _connectionStatus.value = ConnectionStatus.REGISTERED
@@ -364,6 +401,18 @@ class IrcEngine(
 
                 // Reset temporal states
                 repository?.resetTemporalUserStates(serverId)
+                
+                // Execute onConnectCommands
+                config.onConnectCommands?.let { commands ->
+                    scope.launch {
+                        commands.split("\n").forEach { cmd ->
+                            if (cmd.isNotBlank()) {
+                                delay(500) // Small delay between commands to avoid flood
+                                send(cmd.trim())
+                            }
+                        }
+                    }
+                }
 
                 // Sync friends for notification
                 scope.launch {
@@ -635,32 +684,17 @@ class IrcEngine(
         if (repository == null) return
         
         when {
-            ctcp == "IRC_SEC_REQ" -> {
-                repository.insertUser(
-                    UserEntity(
-                        nickname = sender,
-                        serverId = serverId,
-                        secureHandshakeStatus = HandshakeStatus.RECEIVED
-                    )
-                )
-                logToStatus("Secure chat request received from $sender.")
-            }
             ctcp == "VERSION" -> {
                 val settings = repository.settings.first()
-                val version = settings?.customUserAgent ?: "IRCClient 1.0"
+                val version = settings?.customUserAgent ?: "FenixIRC/${com.personal.ircclient.BuildConfig.VERSION_NAME}"
                 send("NOTICE $sender :\u0001VERSION $version\u0001")
             }
-            ctcp.startsWith("IRC_SEC_KEY ") -> {
-                val key = ctcp.removePrefix("IRC_SEC_KEY ").trim()
-                repository.insertUser(
-                    UserEntity(
-                        nickname = sender,
-                        serverId = serverId,
-                        encryptionKey = key,
-                        secureHandshakeStatus = HandshakeStatus.COMPLETED
-                    )
-                )
-                logToStatus("Secure chat established with $sender.")
+            ctcp == "TIME" -> {
+                val time = java.util.Date().toString()
+                send("NOTICE $sender :\u0001TIME $time\u0001")
+            }
+            ctcp == "PING" -> {
+                send("NOTICE $sender :\u0001PING\u0001")
             }
         }
     }
@@ -743,7 +777,9 @@ class IrcEngine(
                 if (hostmask != null && !isOpHere && repository.isHostmaskIgnored(serverId, hostmask)) return
 
                 val isPrivateToMe = rawTarget.equals(currentNickname, ignoreCase = true)
-                
+                val finalTargetForClosedCheck = if (isPrivateToMe) sender else normalizeTarget(rawTarget)
+                if (isTargetRecentlyClosed(finalTargetForClosedCheck)) return
+
                 // Privacy check for Private Messages
                 if (isPrivateToMe) {
                     val settings = repository.settings.firstOrNull()
@@ -757,6 +793,31 @@ class IrcEngine(
                             return
                         }
                     }
+                }
+
+                // Ignore own secure handshake echoes (from bouncers)
+                if (sender.equals(currentNickname, ignoreCase = true)) return
+
+                if (text == "FENIX_SECURE_REQ") {
+                    val existing = repository.getUser(sender, serverId)
+                    if (existing != null) {
+                        repository.insertUser(existing.copy(secureHandshakeStatus = HandshakeStatus.RECEIVED))
+                    } else {
+                        repository.insertUser(UserEntity(nickname = sender, serverId = serverId, secureHandshakeStatus = HandshakeStatus.RECEIVED))
+                    }
+                    logToStatus("Secure chat request received from $sender.")
+                    return
+                }
+                if (text.startsWith("FENIX_SECURE_KEY:")) {
+                    val key = text.removePrefix("FENIX_SECURE_KEY:").trim()
+                    val existing = repository.getUser(sender, serverId)
+                    if (existing != null) {
+                        repository.insertUser(existing.copy(encryptionKey = key, secureHandshakeStatus = HandshakeStatus.COMPLETED))
+                    } else {
+                        repository.insertUser(UserEntity(nickname = sender, serverId = serverId, encryptionKey = key, secureHandshakeStatus = HandshakeStatus.COMPLETED))
+                    }
+                    logToStatus("Secure chat established with $sender.")
+                    return
                 }
 
                 if (text.startsWith("\u0001") && text.endsWith("\u0001")) {
@@ -784,9 +845,9 @@ class IrcEngine(
                     return
                 }
 
-                val isEncrypted = text.startsWith("[ENC] ")
+                val isEncrypted = text.startsWith("ENC:")
                 if (isEncrypted) {
-                    text = text.removePrefix("[ENC] ").trim()
+                    text = text.removePrefix("ENC:").trim()
                 }
 
                 val finalTarget = if (rawTarget.equals(currentNickname, ignoreCase = true)) {
@@ -871,15 +932,55 @@ class IrcEngine(
     suspend fun send(raw: String, target: String? = null) {
         val snifferResult = sniffer.onOutgoingMessage(raw, target ?: currentlyViewingTarget, currentNickname) ?: return
         
-        // If the sniffer didn't replace a command (it still starts with /), strip it for the server
-        val finalRaw = if (snifferResult.startsWith("/")) snifferResult.substring(1) else snifferResult
+        // Unescape IRC control characters (e.g., \u0003 to ASCII 3)
+        var processedResult = snifferResult
+            .replace("\\u0003", "\u0003")
+            .replace("\\u0002", "\u0002")
+            .replace("\\u001f", "\u001f")
+            .replace("\\u001d", "\u001d")
+            .replace("\\u000f", "\u000f")
+            .replace("\\u0016", "\u0016")
 
-        withContext(Dispatchers.IO) {
-            try {
-                writer?.write("$finalRaw\r\n")
-                writer?.flush()
-            } catch (e: Exception) {
-                e.printStackTrace()
+        // Final protection: if it still starts with /, it's a command.
+        if (processedResult.startsWith("/")) {
+            val cmd = processedResult.substring(1)
+            val rawCommand = cmd.split(" ")[0].uppercase()
+            val validIrcCommands = listOf(
+                "ADMIN", "AWAY", "BAN", "CAP", "CHGHOST", "CHGIDENT", "CHGNAME", "CLOSE", "CONNECT",
+                "DIE", "ENC", "ERROR", "GLIST", "GNOTICE", "GOPER", "GROUTE", "HELP", "INFO",
+                "INVITE", "ISON", "JOIN", "KICK", "KICKBAN", "KILL", "LINKS", "LIST", "LUSERS",
+                "MAP", "MODE", "MONITOR", "MOTD", "NAMES", "NICK", "NOTICE", "OPER", "PART",
+                "PASS", "PING", "PONG", "PRIVMSG", "PROTOCTL", "QUIT", "REHASH", "RESTART",
+                "RULES", "SAJOIN", "SAKICK", "SAMODE", "SANICK", "SAPART", "SERVLIST", "SQUERY",
+                "SQUIT", "STATS", "SUMMON", "TIME", "TOPIC", "TRACE", "UNBAN", "USER", "USERHOST",
+                "USERS", "VERSION", "WALLOPS", "WATCH", "WHO", "WHOIS", "WHOWAS", "ZLIST"
+            )
+            
+            if (rawCommand !in validIrcCommands) {
+                if (target != null) {
+                    send("PRIVMSG $target :$processedResult")
+                } else {
+                    logToStatus("Unknown command: $rawCommand (Script matching failed?)")
+                }
+                return
+            }
+            
+            withContext(Dispatchers.IO) {
+                try {
+                    writer?.write("$cmd\r\n")
+                    writer?.flush()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        } else {
+            withContext(Dispatchers.IO) {
+                try {
+                    writer?.write("$processedResult\r\n")
+                    writer?.flush()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
     }
@@ -892,8 +993,8 @@ class IrcEngine(
         return commandHandler.handleCommand(target, input)
     }
 
-    fun getAvailableCommands(target: String, isOp: Boolean): List<String> {
-        return commandHandler.getAvailableCommands(target, isOp)
+    fun getAvailableCommands(target: String, isOp: Boolean, isAway: Boolean = false): List<String> {
+        return commandHandler.getAvailableCommands(target, isOp, isAway)
     }
 
     suspend fun sendMessage(message: IrcMessage) {
@@ -920,7 +1021,8 @@ class IrcEngine(
                 isBanned = banned ?: channel.isBanned,
                 lastVisited = now
             ))
-        } else {
+        } else if (joined || (banned == true)) {
+            // Only insert if joining or being banned, don't re-insert if just leaving/quitting
             repository?.insertChannel(
                 ChannelEntity(
                     serverId = serverId,
@@ -999,17 +1101,32 @@ class IrcEngine(
                     send("QUIT :$quitMessage")
                     delay(500) // Give it a moment to send
                 }
-                socket?.close()
-                reader?.close()
-                writer?.close()
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
-                socket = null
-                reader = null
-                writer = null
+                closeResources()
                 _connectionStatus.emit(ConnectionStatus.DISCONNECTED)
             }
         }
+    }
+
+    private fun closeResources() {
+        try {
+            socket?.close()
+            reader?.close()
+            writer?.close()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            socket = null
+            reader = null
+            writer = null
+        }
+    }
+
+    fun destroy() {
+        heartbeatJob?.cancel()
+        closeResources()
+        scope.cancel()
     }
 }

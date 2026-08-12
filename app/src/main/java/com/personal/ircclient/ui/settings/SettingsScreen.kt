@@ -19,7 +19,9 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.personal.ircclient.BuildConfig
@@ -27,6 +29,7 @@ import com.personal.ircclient.core.utils.Localizer
 import com.personal.ircclient.core.utils.LinkHandler
 import com.personal.ircclient.data.local.entities.EventDisplayMode
 import com.personal.ircclient.ui.chats.ChatsViewModel
+import com.personal.ircclient.ui.chats.FormattingTools
 
 @Composable
 fun SettingsScreen(
@@ -94,14 +97,14 @@ fun SettingsScreen(
             modifier = Modifier.width(100.dp),
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
             header = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 8.dp)) {
                     Icon(
                         Icons.Default.LogoDev, 
                         null, 
-                        modifier = Modifier.padding(top = 16.dp).size(32.dp),
+                        modifier = Modifier.padding(top = 4.dp).size(24.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
-                    Text("AI-First", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Text("AI-First", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontSize = 9.sp)
                 }
             }
         ) {
@@ -390,7 +393,7 @@ fun ScriptsSettings(viewModel: ChatsViewModel, lang: String) {
 
     if (showAddDialog != null) {
         var name by remember { mutableStateOf(showAddDialog!!.name) }
-        var content by remember { mutableStateOf(showAddDialog!!.content) }
+        var scriptContent by remember { mutableStateOf(TextFieldValue(showAddDialog!!.content)) }
         var trigger by remember { mutableStateOf(showAddDialog!!.triggerType) }
 
         AlertDialog(
@@ -410,20 +413,38 @@ fun ScriptsSettings(viewModel: ChatsViewModel, lang: String) {
                         Text(Localizer.getString("trigger_incoming", lang), style = MaterialTheme.typography.bodySmall)
                     }
 
+                    Spacer(Modifier.height(8.dp))
+                    FormattingTools(
+                        onFormatClick = { code ->
+                            val textStr = scriptContent.text
+                            val selection = scriptContent.selection
+                            val newText = textStr.substring(0, selection.start) + code + textStr.substring(selection.end)
+                            scriptContent = TextFieldValue(newText, TextRange(selection.start + code.length))
+                        },
+                        onColorClick = { colorCode ->
+                            val textStr = scriptContent.text
+                            val selection = scriptContent.selection
+                            val code = "\\u0003$colorCode"
+                            val newText = textStr.substring(0, selection.start) + code + textStr.substring(selection.end)
+                            scriptContent = TextFieldValue(newText, TextRange(selection.start + code.length))
+                        }
+                    )
+
                     OutlinedTextField(
-                        value = content, 
-                        onValueChange = { content = it }, 
+                        value = scriptContent, 
+                        onValueChange = { scriptContent = it }, 
                         label = { Text(Localizer.getString("script_logic", lang)) }, 
-                        placeholder = { Text("OUT: /hello -> PRIVMSG %T :Hi!") },
+                        placeholder = { Text("OUT: /hi -> PRIVMSG %T :Hello!") },
                         modifier = Modifier.fillMaxWidth().height(200.dp)
                     )
-                    Text(Localizer.getString("script_support", lang), style = MaterialTheme.typography.labelSmall)
+                    Text("Syntax: OUT: /alias -> COMMAND", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Text("Variables: %T (Target), %N (Nick), %A (Args)", style = MaterialTheme.typography.labelSmall)
                 }
             },
             confirmButton = {
                 Button(onClick = {
-                    if (name.isNotBlank() && content.isNotBlank()) {
-                        viewModel.insertScript(name, content, trigger, showAddDialog?.id ?: 0L)
+                    if (name.isNotBlank() && scriptContent.text.isNotBlank()) {
+                        viewModel.insertScript(name, scriptContent.text, trigger, showAddDialog?.id ?: 0L)
                         showAddDialog = null
                     }
                 }) { Text(Localizer.getString("save", lang)) }
@@ -614,7 +635,8 @@ fun ConnectivitySettings(
         
         var expandedEngines by remember { mutableStateOf(false) }
         val currentEngineName = searchEngines.entries.find { it.value == settings.defaultSearchEngine }?.key ?: "Custom"
-        
+        var customSearch by remember { mutableStateOf(settings.defaultSearchEngine) }
+
         Box(modifier = Modifier.padding(top = 8.dp)) {
             OutlinedButton(onClick = { expandedEngines = true }, modifier = Modifier.fillMaxWidth()) {
                 Text(currentEngineName)
@@ -623,13 +645,12 @@ fun ConnectivitySettings(
                 searchEngines.forEach { (name, url) ->
                     DropdownMenuItem(text = { Text(name) }, onClick = {
                         viewModel.updateSettings(settings.copy(defaultSearchEngine = url))
+                        customSearch = url // Update local state for immediate feedback
                         expandedEngines = false
                     })
                 }
             }
         }
-
-        var customSearch by remember { mutableStateOf(settings.defaultSearchEngine) }
         OutlinedTextField(
             value = customSearch, 
             onValueChange = { customSearch = it; viewModel.updateSettings(settings.copy(defaultSearchEngine = it)) }, 
@@ -655,8 +676,9 @@ fun AboutSettings(context: android.content.Context, lang: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Default.LogoDev, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
         Text("FenixIRC", style = MaterialTheme.typography.headlineMedium)
-        Text("${Localizer.getString("version", lang)} 0.6 (Alpha)", style = MaterialTheme.typography.bodyMedium)
+        Text("${Localizer.getString("version", lang)} ${com.personal.ircclient.BuildConfig.VERSION_NAME} (Alpha)", style = MaterialTheme.typography.bodyMedium)
         Text("Edition: ${com.personal.ircclient.BuildConfig.FLAVOR.uppercase()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+        Text("Package: ${context.packageName}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
         
         Spacer(Modifier.height(8.dp))
         Surface(

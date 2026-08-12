@@ -75,7 +75,9 @@ class ServersViewModel(
                 saslUsername = server.saslUsername,
                 saslPassword = server.saslPassword,
                 useBouncer = server.useBouncer,
-                bouncerNetwork = server.bouncerNetwork
+                bouncerNetwork = server.bouncerNetwork,
+                email = server.email,
+                onConnectCommands = server.onConnectCommands
             )
             ircManager.updateConfig(server.id, config)
         }
@@ -105,13 +107,18 @@ class ServersViewModel(
             saslUsername = server.saslUsername,
             saslPassword = server.saslPassword,
             useBouncer = server.useBouncer,
-            bouncerNetwork = server.bouncerNetwork
+            bouncerNetwork = server.bouncerNetwork,
+            email = server.email,
+            onConnectCommands = server.onConnectCommands
         )
         ircManager.connect(server.id, config)
     }
 
     fun disconnectServer(serverId: Long) {
-        ircManager.disconnect(serverId)
+        viewModelScope.launch {
+            val quitMsg = repository.settings.first()?.defaultQuitMessage ?: "FenixIRC Logout"
+            ircManager.disconnect(serverId, quitMsg)
+        }
     }
 
     fun getEngine(serverId: Long): com.personal.ircclient.core.IrcEngine? = ircManager.getEngine(serverId)

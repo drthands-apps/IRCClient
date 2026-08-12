@@ -29,5 +29,9 @@ data class ServerEntity(
     // Bouncer
     val useBouncer: Boolean = false,
     val bouncerNetwork: String? = null,
-    val lastConnected: Long = 0
+    val lastConnected: Long = 0,
+    
+    // Registration / Modern Extensions
+    val email: String? = null,
+    val onConnectCommands: String? = null // Newline separated commands
 )
