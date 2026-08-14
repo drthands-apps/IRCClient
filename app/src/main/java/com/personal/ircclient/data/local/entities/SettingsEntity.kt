@@ -64,5 +64,9 @@ data class SettingsEntity(
     // Radio Settings
     val isRadioPluginEnabled: Boolean = false,
     val selectedRadioName: String = "None",
-    val selectedRadioUrl: String = ""
+    val selectedRadioUrl: String = "",
+    
+    // v0.7.0 Privacy & Advanced
+    val mediaProvider: String = "LITTERBOX", // CATBOX (Permanent), LITTERBOX (24h)
+    val strictIrcMode: Boolean = false // Aislado de la web
 )

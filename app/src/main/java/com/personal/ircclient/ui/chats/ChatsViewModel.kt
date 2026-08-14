@@ -653,14 +653,27 @@ class ChatsViewModel(
                         if (cached.text == msg.text && cached.isEncrypted == msg.isEncrypted) return@map cached
                     }
 
-                    val decryptedText = (if (msg.isEncrypted && key != null) {
+                    var decryptedText = (if (msg.isEncrypted && key != null) {
                         EncryptionManager.decrypt(msg.text, key)
                     } else {
                         msg.text
                     }).trim()
                     
-                    if (msg.isEncrypted && key != null && decryptedText == msg.text) {
-                        android.util.Log.e("ChatsViewModel", "Decryption failed for msg ${msg.id}")
+                    if (msg.isEncrypted && key != null && decryptedText != msg.text) {
+                        decryptedText = when {
+                            msg.text.startsWith("Enc1:") || msg.text.startsWith("Enc2:") -> {
+                                val providerBase = if (msg.text.startsWith("Enc1:")) "https://files.catbox.moe/" else "https://litterbox.catbox.moe/"
+                                
+                                // Safely extract the data part (the filename) which is after the last ':'
+                                val lastColon = decryptedText.lastIndexOf(':')
+                                if (lastColon != -1 && lastColon < decryptedText.length - 1) {
+                                    val id = decryptedText.substring(lastColon + 1).removeSuffix("]")
+                                    val prefix = decryptedText.substring(0, lastColon + 1)
+                                    prefix + providerBase + id + "]"
+                                } else decryptedText
+                            }
+                            else -> decryptedText
+                        }
                     }
                     
                     val processedMsg = if (decryptedText.startsWith("[MEDIA:", ignoreCase = true) && decryptedText.endsWith("]")) {
@@ -800,7 +813,7 @@ class ChatsViewModel(
                 
                 val user = repository.getUser(target, serverId)
                 val key = user?.encryptionKey
-                val finalMessage = if (key != null) "ENC:" + EncryptionManager.encrypt(text, key) else text
+                val finalMessage = if (key != null) "Enc0:" + EncryptionManager.encrypt(text, key) else text
                 engine.send("PRIVMSG $target :$finalMessage")
                 val finalTarget = normalizeTarget(target)
                 repository.insertMessage(MessageEntity(serverId = serverId, target = finalTarget, sender = "me", text = if (key != null) EncryptionManager.encrypt(text, key) else text, isEncrypted = key != null, type = MessageType.TEXT))
@@ -815,12 +828,22 @@ class ChatsViewModel(
                 val user = repository.getUser(target, serverId)
                 val key = user?.encryptionKey
                 
-                // Shorten URL if it's from catbox to save IRC bytes
-                val processedData = data.removePrefix("https://files.catbox.moe/")
+                // Shorten URL if it's from catbox or litterbox to save IRC bytes
+                val cleanData = data
+                    .removePrefix("https://files.catbox.moe/")
+                    .removePrefix("https://litterbox.catbox.moe/")
                 
                 val ttlPrefix = if (ttlSeconds != null) "TTL=$ttlSeconds:" else ""
-                val mediaTag = "[MEDIA:${type.name}:$ttlPrefix$processedData]"
-                val finalMessage = if (key != null) "ENC:" + EncryptionManager.encrypt(mediaTag, key) else mediaTag
+                val mediaTag = "[MEDIA:${type.name}:$ttlPrefix$cleanData]"
+                
+                // Header depends on the provider in settings
+                val header = when(settingsState.value.mediaProvider) {
+                    "CATBOX" -> "Enc1:"
+                    "LITTERBOX" -> "Enc2:"
+                    else -> "Enc0:"
+                }
+                
+                val finalMessage = if (key != null) header + EncryptionManager.encrypt(mediaTag, key) else mediaTag
                 
                 engine.send("PRIVMSG $target :$finalMessage")
                 val finalTarget = normalizeTarget(target)

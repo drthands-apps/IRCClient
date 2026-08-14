@@ -63,6 +63,11 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 
+data class MessageGroup(
+    val id: Long,
+    val messages: List<MessageEntity>
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatDetailScreen(
@@ -1148,6 +1153,47 @@ fun ChatDetailScreen(
                     }
 
                     val listState = rememberLazyListState()
+                    
+                    // Logic to group consecutive messages from the same sender
+                    val groupedMessages = remember(messages) {
+                        val result = mutableListOf<MessageGroup>()
+                        val chronological = messages.reversed()
+                        
+                        var currentGroup: MutableList<MessageEntity>? = null
+                        
+                        chronological.forEach { msg ->
+                            val prevMsg = currentGroup?.lastOrNull()
+                            
+                            val sameSender = prevMsg != null && prevMsg.sender == msg.sender
+                            val sameType = prevMsg != null && prevMsg.type == MessageType.TEXT && msg.type == MessageType.TEXT
+                            val withinTime = prevMsg != null && (msg.timestamp - prevMsg.timestamp) < 10000 
+                            val notTooLong = currentGroup != null && currentGroup!!.size < 10 
+                            val noSpecialStatus = msg.type == MessageType.TEXT && !msg.isSystemMessage
+                            
+                            if (sameSender && sameType && withinTime && notTooLong && noSpecialStatus) {
+                                currentGroup?.add(msg)
+                            } else {
+                                if (currentGroup != null) {
+                                    result.add(MessageGroup(currentGroup!![0].id, currentGroup!!))
+                                }
+                                currentGroup = mutableListOf(msg)
+                            }
+                        }
+                        
+                        if (currentGroup != null) {
+                            result.add(MessageGroup(currentGroup!![0].id, currentGroup!!))
+                        }
+                        
+                        result.reversed()
+                    }
+
+                    // Auto-scroll logic: stay at bottom if already there
+                    LaunchedEffect(messages.size) {
+                        if (listState.firstVisibleItemIndex <= 1) {
+                            listState.animateScrollToItem(0)
+                        }
+                    }
+
                     val showScrollToBottom by remember {
                         derivedStateOf {
                             listState.firstVisibleItemIndex > 0
@@ -1161,14 +1207,15 @@ fun ChatDetailScreen(
                             reverseLayout = true,
                             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp)
                         ) {
-                            items(messages, key = { it.id }) { msg ->
-                                val senderInfo = channelUsers.find { it.nickname == msg.sender }
+                            items(groupedMessages, key = { it.id }) { group ->
+                                val firstMsg = group.messages[0]
+                                val senderInfo = channelUsers.find { it.nickname == firstMsg.sender }
                                 MessageBubble(
-                                    msg = msg,
+                                    group = group,
                                     serverId = serverId,
                                     myNick = myNick,
                                     amIOp = amIOp,
-                                    isFriend = friends.contains(msg.sender),
+                                    isFriend = friends.contains(firstMsg.sender),
                                     senderPrefix = senderInfo?.prefix ?: "",
                                     onAction = handleSend,
                                     onTextChange = { textFieldValue = it },
@@ -1217,7 +1264,7 @@ fun ChatDetailScreen(
 
 @Composable
 fun MessageBubble(
-    msg: MessageEntity,
+    group: MessageGroup,
     serverId: Long,
     myNick: String,
     amIOp: Boolean,
@@ -1231,6 +1278,7 @@ fun MessageBubble(
     contextAndroid: android.content.Context,
     senderInfo: ChannelUserInfo? = null
 ) {
+    val msg = group.messages[0]
     val lang = settings.language
     val isStatus = msg.target == "Status"
     val isMe = msg.sender == "me" || msg.sender == myNick
@@ -1354,61 +1402,61 @@ fun MessageBubble(
                         )
                     }
                     
-                    val messageText = if (settings.enableIrcColors) {
-                        parseIrcColors(msg.text, settings)
-                    } else {
-                        AnnotatedString(stripIrcColors(msg.text))
-                    }
-                    
-                    val currentContext = contextAndroid 
-                    
-                    val isMOTD = msg.text.contains("MOTD", ignoreCase = true) || isStatus
-                    val lines = msg.text.split("\n")
-                    val isDrawing = (lines.size > 5 && lines.any { it.contains("  ") } && !msg.text.startsWith("WHOIS Results:")) || 
-                                    (isMOTD && lines.any { it.contains("  ") } && !msg.text.startsWith("WHOIS Results:"))
-                    
-                    if (isDrawing) {
-                        Surface(
-                            color = Color.Black.copy(alpha = 0.05f),
-                            shape = MaterialTheme.shapes.small,
-                            modifier = Modifier.padding(top = 4.dp).fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(4.dp)) {
-                                lines.forEach { line ->
-                                    Text(
-                                        text = stripIrcColors(line),
-                                        style = TextStyle(
-                                            fontSize = 8.sp,
-                                            lineHeight = 9.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                                        ),
-                                        modifier = Modifier.fillMaxWidth(),
-                                        maxLines = 1,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Clip
-                                    )
+                    group.messages.forEach { m ->
+                        val messageText = if (settings.enableIrcColors) {
+                            parseIrcColors(m.text, settings)
+                        } else {
+                            AnnotatedString(stripIrcColors(m.text))
+                        }
+                        
+                        val isMOTD = m.text.contains("MOTD", ignoreCase = true) || isStatus
+                        val lines = m.text.split("\n")
+                        val isDrawing = (lines.size > 5 && lines.any { it.contains("  ") } && !m.text.startsWith("WHOIS Results:")) || 
+                                        (isMOTD && lines.any { it.contains("  ") } && !m.text.startsWith("WHOIS Results:"))
+                        
+                        if (isDrawing) {
+                            Surface(
+                                color = Color.Black.copy(alpha = 0.05f),
+                                shape = MaterialTheme.shapes.small,
+                                modifier = Modifier.padding(top = 4.dp).fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(4.dp)) {
+                                    lines.forEach { line ->
+                                        Text(
+                                            text = stripIrcColors(line),
+                                            style = TextStyle(
+                                                fontSize = 8.sp,
+                                                lineHeight = 9.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                            ),
+                                            modifier = Modifier.fillMaxWidth(),
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Clip
+                                        )
+                                    }
                                 }
                             }
+                        } else {
+                            ClickableText(
+                                text = messageText,
+                                style = LocalTextStyle.current.copy(
+                                    fontFamily = if (isStatus) FontFamily.Monospace else FontFamily.Default,
+                                    fontSize = if (isStatus) 10.sp else 14.sp,
+                                    lineHeight = if (isStatus) 12.sp else 20.sp,
+                                    textAlign = if (isSystem) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                modifier = if (isSystem) Modifier.fillMaxWidth() else Modifier,
+                                onClick = { offset ->
+                                    messageText.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                                        .firstOrNull()?.let { annotation ->
+                                            LinkHandler.openLink(contextAndroid, annotation.item, settings)
+                                        }
+                                }
+                            )
                         }
-                    } else {
-                        ClickableText(
-                            text = messageText,
-                            style = LocalTextStyle.current.copy(
-                                fontFamily = if (isStatus) FontFamily.Monospace else FontFamily.Default,
-                                fontSize = if (isStatus) 10.sp else 14.sp,
-                                lineHeight = if (isStatus) 12.sp else 20.sp,
-                                textAlign = if (isSystem) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
-                                color = MaterialTheme.colorScheme.onSurface
-                            ),
-                            modifier = if (isSystem) Modifier.fillMaxWidth() else Modifier,
-                            onClick = { offset ->
-                                messageText.getStringAnnotations(tag = "URL", start = offset, end = offset)
-                                    .firstOrNull()?.let { annotation ->
-                                        LinkHandler.openLink(currentContext, annotation.item, settings)
-                                    }
-                            }
-                        )
                     }
                     
                     if (settings.showLinkPreviews) {

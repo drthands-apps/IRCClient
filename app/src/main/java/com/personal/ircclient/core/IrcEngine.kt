@@ -854,7 +854,10 @@ class IrcEngine(
                     return
                 }
 
-                val isEncrypted = text.startsWith("Enc0:") || text.startsWith("Enc1:") || text.startsWith("Enc2:")
+                val isEnc0 = text.startsWith("Enc0:")
+                val isEnc1 = text.startsWith("Enc1:")
+                val isEnc2 = text.startsWith("Enc2:")
+                val isEncrypted = isEnc0 || isEnc1 || isEnc2
                 
                 // Privacy: only process encryption in PRO version
                 val isPro = com.personal.ircclient.BuildConfig.FLAVOR == "pro" || 
