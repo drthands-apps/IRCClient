@@ -5,18 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tutoriales - FenixIRC</title>
     <style>
-        body { font-family: sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }
-        header { background: #6200EE; color: white; padding: 20px; text-align: center; border-radius: 8px; }
-        .nav { margin-top: 10px; }
-        .nav a { color: white; text-decoration: none; margin: 0 10px; font-weight: bold; }
-        h2 { color: #6200EE; border-bottom: 2px solid #6200EE; padding-bottom: 5px; }
-        .card { background: #fff; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px; }
-        footer { text-align: center; margin-top: 40px; font-size: 0.8em; color: #777; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 0 auto; padding: 20px; background-color: #f4f4f9; }
+        header { background: #6200EE; color: white; padding: 30px 20px; text-align: center; border-radius: 12px; margin-bottom: 30px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+        .nav { margin-top: 15px; }
+        .nav a { color: #E1D5FE; text-decoration: none; margin: 0 15px; font-weight: bold; transition: color 0.3s; }
+        .nav a:hover { color: white; }
+        h2 { color: #6200EE; border-bottom: 2px solid #E1D5FE; padding-bottom: 10px; margin-top: 30px; }
+        .card { background: #fff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); padding: 25px; margin-bottom: 25px; border: 1px solid #eee; }
+        .step { display: flex; align-items: flex-start; margin-bottom: 20px; }
+        .step-num { background: #6200EE; color: white; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 15px; flex-shrink: 0; }
+        code { background: #eee; padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', Courier, monospace; font-weight: bold; color: #d81b60; }
+        .highlight { color: #6200EE; font-weight: bold; }
+        footer { text-align: center; margin-top: 50px; font-size: 0.9em; color: #888; padding-bottom: 20px; }
     </style>
 </head>
 <body>
     <header>
-        <h1>FenixIRC - Tutoriales</h1>
+        <h1>Guía de Tutoriales</h1>
         <div class="nav">
             <a href="../index.html">Inicio</a>
             <a href="../manuals/index.html">Manuales</a>
@@ -25,23 +30,62 @@
     </header>
 
     <div class="card">
-        <h2>Primeros Pasos</h2>
-        <p>Aprende a configurar tu primer servidor y entrar en tus salas favoritas.</p>
+        <h2>Primeros Pasos en FenixIRC</h2>
+        <p>Configurar un cliente de IRC puede parecer complejo al principio, pero con FenixIRC el proceso es intuitivo. Sigue estos pasos para empezar a chatear en segundos.</p>
+
+        <div class="step">
+            <div class="step-num">1</div>
+            <div>
+                <strong>Añadir un Servidor:</strong> En la pestaña principal de <span class="highlight">Servidores</span>, pulsa el botón de menú (tres puntos) y selecciona "Añadir Nuevo". Verás una lista de redes populares como <em>Chateamos</em> o <em>Libera.Chat</em>. Si tu red no está en la lista, puedes introducir los datos manualmente.
+            </div>
+        </div>
+
+        <div class="step">
+            <div class="step-num">2</div>
+            <div>
+                <strong>Configurar tu Identidad:</strong> Introduce el <span class="highlight">Nickname</span> (apodo) que quieres usar. Algunos servidores requieren un <em>Username</em> y un <em>Real Name</em>. En FenixIRC v0.8+, también puedes incluir tu <span class="highlight">Email</span> para facilitar el registro en servidores que lo soliciten.
+            </div>
+        </div>
+
+        <div class="step">
+            <div class="step-num">3</div>
+            <div>
+                <strong>Establecer Conexión:</strong> Pulsa el icono de la nube <span class="highlight">CloudOff</span> junto al nombre del servidor. Verás cómo cambia a amarillo (Conectando) y luego a verde (Registrado). Si hay algún error, el mensaje aparecerá en la ventana de <strong>Status</strong>.
+            </div>
+        </div>
+
+        <div class="step">
+            <div class="step-num">4</div>
+            <div>
+                <strong>Entrar en una Sala:</strong> Una vez conectado, tienes dos opciones:
+                <ul>
+                    <li>Usar el comando directo en el cuadro de texto: <code>/JOIN #nombre_sala</code></li>
+                    <li>Ir a la pestaña <span class="highlight">Salas</span>, pulsar el menú y seleccionar "Descubrir" para ver la lista de canales disponibles en ese servidor.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Trucos de Navegación</h2>
+        <p>FenixIRC está diseñado para ser rápido. Aquí tienes un par de funciones que te harán la vida más fácil:</p>
         <ul>
-            <li>Configuración de Red: Host y Puerto.</li>
-            <li>Elegir un Nickname seguro.</li>
-            <li>Comandos básicos: /JOIN, /PART, /LIST.</li>
+            <li><strong>Auto-scroll:</strong> El chat siempre te mostrará el último mensaje. Si subes para leer el historial, aparecerá un botón <span class="highlight">New messages</span> para volver abajo al instante.</li>
+            <li><strong>Favoritos:</strong> Pulsa la estrella en cualquier banner de sala para marcarla como favorita. Podrás reconectar a todas tus salas preferidas con un solo click desde el menú superior.</li>
         </ul>
     </div>
 
     <div class="card">
-        <h2>Domina los Scripts (Pro)</h2>
-        <p>Automatiza tus respuestas y crea comandos personalizados.</p>
-        <p>Uso de variables: <code>%T</code> para el canal actual, <code>%N</code> para tu nick.</p>
+        <h2>Domina los Scripts (Versión Pro)</h2>
+        <p>Los scripts te permiten crear comandos personalizados (aliases) para ahorrar tiempo.</p>
+        <p>Ejemplo básico: Para saludar a todos rápidamente, crea un script saliente con este contenido:<br>
+        <code>OUT: /hi -> PRIVMSG %T :¡Hola a todos! Saludos desde FenixIRC.</code></p>
+        <p>Ahora, cada vez que escribas <code>/hi</code> en cualquier canal, la app enviará el saludo completo automáticamente.</p>
     </div>
 
     <footer>
-        <p>FenixIRC Project - Made with Gemini AI</p>
+        <p>FenixIRC Project - Potenciado por Gemini AI</p>
+        <p>&copy; 2026 drthands-apps</p>
     </footer>
 </body>
 </html>
