@@ -188,7 +188,16 @@ class IrcEngine(
                     send("PASS $pass")
                 }
                 send("NICK ${config.nickname}")
-                val baseRealName = if (!settings?.customUserAgent.isNullOrBlank()) settings!!.customUserAgent else "FenixIRC/${com.personal.ircclient.BuildConfig.VERSION_NAME}"
+                
+                // Priority: 1. Specific server realName (if not default) 2. Global custom UserAgent 3. Default FenixIRC version
+                val baseRealName = if (config.realName != "IRC Client User" && config.realName.isNotBlank()) {
+                    config.realName
+                } else if (!settings?.customUserAgent.isNullOrBlank()) {
+                    settings!!.customUserAgent
+                } else {
+                    "FenixIRC/${com.personal.ircclient.BuildConfig.VERSION_NAME}"
+                }
+
                 val finalRealName = if (!config.email.isNullOrBlank()) "$baseRealName (${config.email})" else baseRealName
                 
                 val username = if (config.useBouncer && config.bouncerNetwork != null && config.password == null) {
@@ -845,9 +854,16 @@ class IrcEngine(
                     return
                 }
 
-                val isEncrypted = text.startsWith("ENC:")
-                if (isEncrypted) {
-                    text = text.removePrefix("ENC:").trim()
+                val isEncrypted = text.startsWith("Enc0:") || text.startsWith("Enc1:") || text.startsWith("Enc2:")
+                
+                // Privacy: only process encryption in PRO version
+                val isPro = com.personal.ircclient.BuildConfig.FLAVOR == "pro" || 
+                            context.packageName.contains(".pro", ignoreCase = true)
+
+                if (isEncrypted && !isPro) {
+                    // In Lite, encrypted messages remain as raw cipher text or shows a warning
+                    logSystemMessage(if (rawTarget.equals(currentNickname, ignoreCase = true)) sender else normalizeTarget(rawTarget), 
+                        "Encrypted message received (Requires FenixIRC Pro)")
                 }
 
                 val finalTarget = if (rawTarget.equals(currentNickname, ignoreCase = true)) {
@@ -1053,14 +1069,12 @@ class IrcEngine(
 
     private suspend fun incrementUnreadCount(name: String) {
         val isViewing = name.equals(currentlyViewingTarget, ignoreCase = true)
-        val now = System.currentTimeMillis()
         
         if (name == "Status" || isChannel(name)) {
             val channel = repository?.getChannel(serverId, name)
             if (channel != null) {
                 repository.updateChannel(channel.copy(
-                    unreadCount = if (isViewing) 0 else channel.unreadCount + 1,
-                    lastVisited = now
+                    unreadCount = if (isViewing) 0 else channel.unreadCount + 1
                 ))
             } else {
                 repository?.insertChannel(
@@ -1069,7 +1083,7 @@ class IrcEngine(
                         name = name,
                         unreadCount = if (isViewing) 0 else 1,
                         isJoined = true,
-                        lastVisited = now
+                        lastVisited = System.currentTimeMillis() // Initial creation still moves it up
                     )
                 )
             }
@@ -1077,8 +1091,7 @@ class IrcEngine(
             val user = repository?.getUser(name, serverId)
             if (user != null) {
                 repository.insertUser(user.copy(
-                    unreadCount = if (isViewing) 0 else user.unreadCount + 1,
-                    lastVisited = now
+                    unreadCount = if (isViewing) 0 else user.unreadCount + 1
                 ))
             } else {
                 repository?.insertUser(
@@ -1086,7 +1099,7 @@ class IrcEngine(
                         nickname = name,
                         serverId = serverId,
                         unreadCount = if (isViewing) 0 else 1,
-                        lastVisited = now
+                        lastVisited = System.currentTimeMillis() // Initial creation still moves it up
                     )
                 )
             }

@@ -1147,31 +1147,66 @@ fun ChatDetailScreen(
                         }
                     }
 
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        reverseLayout = true,
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp)
-                    ) {
-                        items(messages, key = { it.id }) { msg ->
-                            val senderInfo = channelUsers.find { it.nickname == msg.sender }
-                            MessageBubble(
-                                msg = msg,
-                                serverId = serverId,
-                                myNick = myNick,
-                                amIOp = amIOp,
-                                isFriend = friends.contains(msg.sender),
-                                senderPrefix = senderInfo?.prefix ?: "",
-                                onAction = handleSend,
-                                onTextChange = { textFieldValue = it },
-                                viewModel = viewModel,
-                                settings = settings,
-                                onNavigateToChat = onNavigateToChat,
-                                contextAndroid = contextAndroid,
-                                senderInfo = senderInfo
-                            )
+                    val listState = rememberLazyListState()
+                    val showScrollToBottom by remember {
+                        derivedStateOf {
+                            listState.firstVisibleItemIndex > 0
                         }
-                        item {
-                            Spacer(modifier = Modifier.height(100.dp))
+                    }
+
+                    Box(modifier = Modifier.weight(1f)) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            reverseLayout = true,
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp)
+                        ) {
+                            items(messages, key = { it.id }) { msg ->
+                                val senderInfo = channelUsers.find { it.nickname == msg.sender }
+                                MessageBubble(
+                                    msg = msg,
+                                    serverId = serverId,
+                                    myNick = myNick,
+                                    amIOp = amIOp,
+                                    isFriend = friends.contains(msg.sender),
+                                    senderPrefix = senderInfo?.prefix ?: "",
+                                    onAction = handleSend,
+                                    onTextChange = { textFieldValue = it },
+                                    viewModel = viewModel,
+                                    settings = settings,
+                                    onNavigateToChat = onNavigateToChat,
+                                    contextAndroid = contextAndroid,
+                                    senderInfo = senderInfo
+                                )
+                            }
+                            item {
+                                Spacer(modifier = Modifier.height(100.dp))
+                            }
+                        }
+
+                        if (showScrollToBottom) {
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 16.dp)
+                                    .clickable {
+                                        scope.launch {
+                                            listState.animateScrollToItem(0)
+                                        }
+                                    },
+                                shape = MaterialTheme.shapes.extraLarge,
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                shadowElevation = 4.dp
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.ArrowDownward, null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("New messages", style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
                         }
                     }
                 }
