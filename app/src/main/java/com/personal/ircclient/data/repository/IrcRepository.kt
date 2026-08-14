@@ -145,38 +145,41 @@ class IrcRepository(
     suspend fun checkAndInsertDefaultScripts() {
         val count = scriptDao.getAllScripts().first().size
         if (count == 0) {
-            val isLite = com.personal.ircclient.BuildConfig.FLAVOR == "lite"
-            val defaultState = !isLite
-
             insertScript(ScriptEntity(
                 name = "Quick Greet",
                 content = "OUT: /hi -> PRIVMSG %T :Hello everyone! Greetings from %N.",
                 triggerType = "OUTGOING",
-                isActive = defaultState
+                isActive = false
             ))
             insertScript(ScriptEntity(
                 name = "Coffee Script",
                 content = "OUT: /cafe -> PRIVMSG %T :☕ Serving a hot coffee for %A! Enjoy.",
                 triggerType = "OUTGOING",
-                isActive = defaultState
+                isActive = false
+            ))
+            insertScript(ScriptEntity(
+                name = "Auto Emoji (Incoming)",
+                content = "IN: coffee -> ☕\nIN: beer -> 🍺\nIN: lol -> 😂",
+                triggerType = "INCOMING",
+                isActive = false
             ))
             insertScript(ScriptEntity(
                 name = "Flower Script",
                 content = "OUT: /flower -> PRIVMSG %T :\\u000303\\\\|/\\u000f \\u000313(@)\\u000f A beautiful flower for %A!",
                 triggerType = "OUTGOING",
-                isActive = defaultState
+                isActive = false
             ))
             insertScript(ScriptEntity(
                 name = "Private Msg Alias",
                 content = "OUT: /p -> PRIVMSG %A",
                 triggerType = "OUTGOING",
-                isActive = defaultState
+                isActive = false
             ))
             insertScript(ScriptEntity(
                 name = "Slap Action",
                 content = "OUT: /slap -> PRIVMSG %T :\u0001ACTION slaps %A around a bit with a large trout\u0001",
                 triggerType = "OUTGOING",
-                isActive = defaultState
+                isActive = false
             ))
         }
     }

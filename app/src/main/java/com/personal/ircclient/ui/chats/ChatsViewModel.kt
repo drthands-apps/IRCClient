@@ -786,9 +786,38 @@ class ChatsViewModel(
                 }
 
                 if (text.startsWith("/")) {
+                    val currentNick = getCurrentNickname(serverId).value
+                    val snifferResult = ircManager.sniffer.onOutgoingMessage(text, target, currentNick) ?: return@launch
+                    
+                    if (snifferResult != text) {
+                        snifferResult.split("\n").forEach { line ->
+                            if (line.isNotBlank()) {
+                                if (line.startsWith("PRIVMSG ", ignoreCase = true)) {
+                                    val parts = line.split(" ", limit = 3)
+                                    if (parts.size >= 3) {
+                                        val scriptTarget = parts[1]
+                                        val scriptText = parts[2].removePrefix(":")
+                                        engine.send(line, skipSniffer = true)
+                                        repository.insertMessage(
+                                            MessageEntity(
+                                                serverId = serverId,
+                                                target = normalizeTarget(scriptTarget),
+                                                sender = "me",
+                                                text = scriptText,
+                                                isModifiedByScript = true
+                                            )
+                                        )
+                                    }
+                                } else {
+                                    engine.send(line, skipSniffer = true)
+                                }
+                            }
+                        }
+                        return@launch
+                    }
+
                     val handled = engine.executeCommand(target, text)
                     if (!handled) {
-                        // If not a built-in command, send to engine (it will check scripts)
                         engine.send(text, target)
                     }
                     
@@ -845,7 +874,7 @@ class ChatsViewModel(
                 
                 val finalMessage = if (key != null) header + EncryptionManager.encrypt(mediaTag, key) else mediaTag
                 
-                engine.send("PRIVMSG $target :$finalMessage")
+                engine.send("PRIVMSG $target :$finalMessage", skipSniffer = true)
                 val finalTarget = normalizeTarget(target)
                 
                 val expiryTimestamp = if (ttlSeconds != null) System.currentTimeMillis() + (ttlSeconds * 1000) else null

@@ -107,6 +107,12 @@ fun ChatDetailScreen(
     val isUser = !isStatus && !isChannel
     val isPro = com.personal.ircclient.BuildConfig.FLAVOR == "pro" || 
                 contextAndroid.packageName.contains(".pro", ignoreCase = true)
+    
+    val isEncryptedChat = user?.encryptionKey != null && user?.secureHandshakeStatus == HandshakeStatus.COMPLETED
+    
+    // UI Constraint: Strictly hidden in channels/status. 
+    // In privates: Only visible if Pro AND Encrypted.
+    val showMultimediaIcons = isUser && isPro && isEncryptedChat
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()

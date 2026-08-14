@@ -97,14 +97,14 @@ fun SettingsScreen(
             modifier = Modifier.width(100.dp),
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
             header = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 8.dp)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 2.dp)) {
                     Icon(
                         Icons.Default.LogoDev, 
                         null, 
-                        modifier = Modifier.padding(top = 4.dp).size(24.dp),
+                        modifier = Modifier.padding(top = 0.dp).size(20.dp), // Moved up and slightly smaller
                         tint = MaterialTheme.colorScheme.primary
                     )
-                    Text("AI-First", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontSize = 9.sp)
+                    Text("AI-First", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontSize = 8.sp)
                 }
             }
         ) {
@@ -114,7 +114,7 @@ fun SettingsScreen(
                     .fillMaxHeight()
                     .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(0.dp) // Removed spacing for maximum fit
             ) {
                 categories.forEach { (name, icon) ->
                     NavigationRailItem(
@@ -135,7 +135,9 @@ fun SettingsScreen(
                                 style = MaterialTheme.typography.labelSmall,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                 maxLines = 2,
-                                softWrap = true
+                                softWrap = true,
+                                fontSize = 9.sp, // Reduced font size for better fit
+                                lineHeight = 10.sp
                             ) 
                         }
                     )
@@ -676,7 +678,7 @@ fun AboutSettings(context: android.content.Context, lang: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Default.LogoDev, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
         Text("FenixIRC", style = MaterialTheme.typography.headlineMedium)
-        Text("${Localizer.getString("version", lang)} ${com.personal.ircclient.BuildConfig.VERSION_NAME} (Alpha)", style = MaterialTheme.typography.bodyMedium)
+        Text("${Localizer.getString("version", lang)} ${com.personal.ircclient.BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
         Text("Edition: ${com.personal.ircclient.BuildConfig.FLAVOR.uppercase()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
         Text("Package: ${context.packageName}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
         

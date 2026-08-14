@@ -948,9 +948,17 @@ class IrcEngine(
         }
     }
 
-    suspend fun send(raw: String, target: String? = null) {
-        val snifferResult = sniffer.onOutgoingMessage(raw, target ?: currentlyViewingTarget, currentNickname) ?: return
+    suspend fun send(raw: String, target: String? = null, skipSniffer: Boolean = false) {
+        val snifferResult = if (skipSniffer) raw else sniffer.onOutgoingMessage(raw, target ?: currentlyViewingTarget, currentNickname) ?: return
         
+        // Handle multi-line script output
+        if (snifferResult.contains("\n")) {
+            snifferResult.split("\n").forEach { line ->
+                if (line.isNotBlank()) send(line.trim(), target, skipSniffer = true)
+            }
+            return
+        }
+
         // Unescape IRC control characters (e.g., \u0003 to ASCII 3)
         var processedResult = snifferResult
             .replace("\\u0003", "\u0003")

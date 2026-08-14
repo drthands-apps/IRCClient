@@ -28,7 +28,7 @@ data class SettingsEntity(
     val proxyHost: String = "",
     val proxyPort: Int = 1080,
     val proxyType: String = "SOCKS", // SOCKS or HTTP
-    val customUserAgent: String = "FenixIRC/0.6",
+    val customUserAgent: String = "FenixIRC/0.8",
     val openLinksExternally: Boolean = true,
     val preferredBrowser: String = "SYSTEM_DEFAULT",
     val runInBackground: Boolean = false,

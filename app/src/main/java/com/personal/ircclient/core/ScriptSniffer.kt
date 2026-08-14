@@ -37,8 +37,37 @@ class ScriptSniffer(private val repository: IrcRepository?) {
      * Intercepts an incoming message from the server.
      */
     fun onIncomingMessage(message: IrcMessage): IrcMessage? {
-        // TODO: Implement incoming transformations (e.g., custom highlighting or auto-ignore)
-        return message
+        if (BuildConfig.FLAVOR == "lite") return message
+        
+        val text = message.parameters.getOrNull(1) ?: return message
+        var currentText = text
+        var modified = false
+
+        activeScripts.filter { it.isActive && (it.triggerType == "ALL" || it.triggerType == "INCOMING") }.forEach { script ->
+            val lines = script.content.split("\n")
+            lines.forEach { line ->
+                val trimmedLine = line.trim()
+                if (trimmedLine.startsWith("IN: ")) {
+                    val content = trimmedLine.removePrefix("IN: ").trim()
+                    val parts = content.split(" -> ", limit = 2)
+                    if (parts.size == 2) {
+                        val word = parts[0].trim()
+                        val replacement = parts[1].trim()
+                        
+                        if (currentText.contains(word, ignoreCase = true)) {
+                            currentText = currentText.replace(word, replacement, ignoreCase = true)
+                            modified = true
+                        }
+                    }
+                }
+            }
+        }
+
+        return if (modified) {
+            val newParams = message.parameters.toMutableList()
+            if (newParams.size > 1) newParams[1] = currentText
+            message.copy(parameters = newParams, isModifiedByScript = true)
+        } else message
     }
 
     /**
