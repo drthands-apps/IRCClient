@@ -149,6 +149,10 @@ class IrcManager(private val context: Context, private val repository: IrcReposi
         connections.clear()
         _activeServers.value = emptySet()
         _globalStatuses.value = emptyMap()
+        
+        // Ensure service and audio are stopped
+        updateServiceState(false)
+        com.personal.ircclient.core.audio.RadioPlayer.stop()
     }
 
     fun updateConfig(serverId: Long, config: IrcConfig) {

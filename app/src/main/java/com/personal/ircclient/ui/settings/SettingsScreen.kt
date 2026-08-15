@@ -120,13 +120,14 @@ fun SettingsScreen(
                     NavigationRailItem(
                         selected = selectedCategory == name,
                         onClick = { selectedCategory = name },
+                        modifier = Modifier.height(64.dp), // Fixed height to fit more items
                         icon = { 
                             BadgedBox(badge = {
                                 if (name == "Scripts") {
                                     Badge { Text("PRO", fontSize = 8.sp) }
                                 }
                             }) {
-                                Icon(icon, contentDescription = name) 
+                                Icon(icon, contentDescription = name, modifier = Modifier.size(20.dp))
                             }
                         },
                         label = { 

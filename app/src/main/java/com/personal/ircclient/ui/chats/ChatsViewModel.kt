@@ -196,6 +196,9 @@ class ChatsViewModel(
             val quitMsg = settingsState.value.defaultQuitMessage
             ircManager.disconnectAll(quitMsg)
             
+            // Stop radio explicitly on disconnect all / exit
+            com.personal.ircclient.core.audio.RadioPlayer.stop()
+            
             // Reset all server unread counts (Status messages)
             val servers = repository.allServers.first()
             servers.forEach { server ->
