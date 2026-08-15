@@ -1159,6 +1159,7 @@ fun ChatDetailScreen(
                     }
 
                     val listState = rememberLazyListState()
+                    var autoScrollEnabled by remember { mutableStateOf(true) }
                     
                     // Logic to group consecutive messages from the same sender
                     val groupedMessages = remember(messages) {
@@ -1193,10 +1194,17 @@ fun ChatDetailScreen(
                         result.reversed()
                     }
 
-                    // Auto-scroll logic: stay at bottom if already there
+                    // Auto-scroll logic: stay at bottom if enabled
                     LaunchedEffect(messages.size) {
-                        if (listState.firstVisibleItemIndex <= 1) {
+                        if (autoScrollEnabled) {
                             listState.animateScrollToItem(0)
+                        }
+                    }
+
+                    // Detection of manual scroll up to disable auto-scroll
+                    LaunchedEffect(listState.firstVisibleItemIndex) {
+                        if (listState.firstVisibleItemIndex > 0) {
+                            autoScrollEnabled = false
                         }
                     }
 
@@ -1243,6 +1251,7 @@ fun ChatDetailScreen(
                                     .align(Alignment.BottomCenter)
                                     .padding(bottom = 16.dp)
                                     .clickable {
+                                        autoScrollEnabled = true
                                         scope.launch {
                                             listState.animateScrollToItem(0)
                                         }

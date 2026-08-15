@@ -47,6 +47,7 @@ class IrcService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        com.personal.ircclient.core.audio.RadioPlayer.stop()
         wakeLock?.let {
             if (it.isHeld) it.release()
         }

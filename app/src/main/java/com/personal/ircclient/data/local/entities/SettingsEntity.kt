@@ -59,7 +59,7 @@ data class SettingsEntity(
     val defaultPartMessage: String = "Leaving channel",
     
     // Internationalization
-    val language: String = "en", // en, es, fr, de, pt, zh
+    val language: String = "es", // es, en, fr, de, pt, zh
     
     // Radio Settings
     val isRadioPluginEnabled: Boolean = false,
