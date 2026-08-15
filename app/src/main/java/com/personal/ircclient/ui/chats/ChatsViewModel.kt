@@ -853,6 +853,30 @@ class ChatsViewModel(
         }
     }
 
+    fun sendFsrMedia(serverId: Long, target: String, type: MessageType, file: java.io.File) {
+        val sessionId = java.util.UUID.randomUUID().toString().take(8)
+        val engine = ircManager.getEngine(serverId)
+        
+        viewModelScope.launch {
+            // Notify receptor via IRC
+            engine?.send("PRIVMSG $target :[FSR:$sessionId:${type.name}]")
+            
+            // Start Relay tunnel as Sender
+            ircManager.fsrManager?.startTransfer(
+                sessionId, file, "SENDER", object : com.personal.ircclient.core.network.FsrManager.FsrCallback {
+                    override fun onProgress(percent: Float) {}
+                    override fun onComplete(file: java.io.File?) {
+                        viewModelScope.launch { engine?.logSystemMessage(target, "FSR transfer complete.") }
+                    }
+                    override fun onError(error: String) {
+                        viewModelScope.launch { engine?.logSystemMessage(target, "FSR error: $error") }
+                    }
+                    override fun onReady() {}
+                }
+            )
+        }
+    }
+
     fun sendMedia(serverId: Long, target: String, type: MessageType, data: String, ttlSeconds: Long? = null) {
         viewModelScope.launch {
             val engine = ircManager.getEngine(serverId)

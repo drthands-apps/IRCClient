@@ -103,7 +103,7 @@ fun ChatDetailScreen(
 
     var textFieldValue by remember { mutableStateOf(TextFieldValue("")) }
     val isStatus = target == "Status"
-    val isChannel = target.startsWith("#")
+    val isChannel = target.startsWith("#") || target.startsWith("&") || target.startsWith("+") || target.startsWith("!")
     val isUser = !isStatus && !isChannel
     val isPro = com.personal.ircclient.BuildConfig.FLAVOR == "pro" || 
                 contextAndroid.packageName.contains(".pro", ignoreCase = true)
@@ -995,7 +995,7 @@ fun ChatDetailScreen(
                                 onValueChange = { textFieldValue = it },
                                 modifier = Modifier.fillMaxWidth(),
                                 placeholder = { Text(if (isStatus) Localizer.getString("enter_command", lang) else Localizer.getString("typing_message", lang)) },
-                                leadingIcon = if (!isStatus && isPro) {
+                                leadingIcon = if (showMultimediaIcons) {
                                     {
                                         Box {
                                             IconButton(onClick = { 
@@ -1059,7 +1059,7 @@ fun ChatDetailScreen(
                                 }
                             }
                         }
-                        if (!isStatus && isPro) {
+                        if (showMultimediaIcons) {
                             IconButton(onClick = { 
                                 if (isRecording) {
                                     isProcessingMedia = true
@@ -1067,14 +1067,18 @@ fun ChatDetailScreen(
                                         try {
                                             val file = recorder.stopRecording()
                                             if (file != null) {
-                                                // Upload recorded audio instead of sending Base64 (to avoid 512-byte IRC limit)
-                                                FileUploader.uploadFile(file) { url ->
-                                                    scope.launch(Dispatchers.Main) {
-                                                        if (url != null) {
-                                                            mediaToSend = MessageType.VOICE to url
-                                                            showTtlDialog = true
+                                                if (isEncryptedChat) {
+                                                    viewModel.sendFsrMedia(serverId, target, MessageType.VOICE, file)
+                                                    scope.launch(Dispatchers.Main) { isProcessingMedia = false }
+                                                } else {
+                                                    FileUploader.uploadFile(file) { url ->
+                                                        scope.launch(Dispatchers.Main) {
+                                                            if (url != null) {
+                                                                mediaToSend = MessageType.VOICE to url
+                                                                showTtlDialog = true
+                                                            }
+                                                            isProcessingMedia = false
                                                         }
-                                                        isProcessingMedia = false
                                                     }
                                                 }
                                             } else {
@@ -1100,6 +1104,7 @@ fun ChatDetailScreen(
                         }
                         IconButton(onClick = {
                             if (textFieldValue.text.isNotBlank()) {
+                                autoScrollEnabled = true
                                 handleSend(textFieldValue.text)
                                 textFieldValue = TextFieldValue("")
                             }
@@ -1195,7 +1200,7 @@ fun ChatDetailScreen(
                     }
 
                     // Auto-scroll logic: stay at bottom if enabled
-                    LaunchedEffect(groupedMessages.size) {
+                    LaunchedEffect(messages.size) {
                         if (autoScrollEnabled) {
                             listState.scrollToItem(0)
                         }
@@ -1208,8 +1213,9 @@ fun ChatDetailScreen(
                     }
 
                     // Detection of manual scroll up to disable auto-scroll
+                    // Only disable if the user manually drags the list away from the bottom
                     LaunchedEffect(listState.isScrollInProgress) {
-                        if (listState.isScrollInProgress && listState.firstVisibleItemIndex > 0) {
+                        if (listState.isScrollInProgress && listState.firstVisibleItemIndex > 2) {
                             autoScrollEnabled = false
                         }
                     }

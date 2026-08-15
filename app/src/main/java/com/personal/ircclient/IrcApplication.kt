@@ -16,6 +16,7 @@ class IrcApplication : Application() {
     lateinit var repository: IrcRepository
     lateinit var ircManager: IrcManager
     lateinit var ttsManager: TextToSpeechManager
+    lateinit var fsrManager: com.personal.ircclient.core.network.FsrManager
 
     override fun onCreate() {
         super.onCreate()
@@ -42,6 +43,8 @@ class IrcApplication : Application() {
         
         ircManager = IrcManager(this, repository)
         ttsManager = TextToSpeechManager(this)
+        // Stable alternative to Glitch
+        fsrManager = com.personal.ircclient.core.network.FsrManager("wss://fenix-relay.onrender.com")
 
         applicationScope.launch(Dispatchers.IO) {
             insertDefaultServers()

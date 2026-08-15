@@ -46,6 +46,13 @@ class IrcService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        com.personal.ircclient.core.audio.RadioPlayer.stop()
+        // If we don't want the service to persist after app swipe, stop it here
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         com.personal.ircclient.core.audio.RadioPlayer.stop()
         wakeLock?.let {

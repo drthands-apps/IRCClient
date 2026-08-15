@@ -15,6 +15,10 @@ class IrcManager(private val context: Context, private val repository: IrcReposi
     
     val sniffer: ScriptSniffer = ScriptSniffer(repository)
     
+    val fsrManager: com.personal.ircclient.core.network.FsrManager? by lazy {
+        (context.applicationContext as? com.personal.ircclient.IrcApplication)?.fsrManager
+    }
+    
     init {
         scope.launch {
             repository.clearInactiveTargets()

@@ -829,6 +829,19 @@ class IrcEngine(
                     return
                 }
 
+                // Handle Fenix Stream Relay (FSR) Tickets
+                if (text.startsWith("[FSR:", ignoreCase = true) && text.endsWith("]")) {
+                    val parts = text.substring(5, text.length - 1).split(":")
+                    if (parts.size >= 2) {
+                        val sessionId = parts[0]
+                        val typeStr = parts[1]
+                        
+                        logToStatus("Incoming FSR transfer request ($typeStr)...")
+                        // Receptor auto-connection logic will go here in v0.9.1
+                    }
+                    return
+                }
+
                 if (text.startsWith("\u0001") && text.endsWith("\u0001")) {
                     val ctcp = text.substring(1, text.length - 1)
                     if (ctcp.startsWith("ACTION ")) {
@@ -994,6 +1007,7 @@ class IrcEngine(
             
             withContext(Dispatchers.IO) {
                 try {
+                    android.util.Log.i("IrcEngine_OUT", "Sending command: $cmd")
                     writer?.write("$cmd\r\n")
                     writer?.flush()
                 } catch (e: Exception) {
@@ -1003,6 +1017,7 @@ class IrcEngine(
         } else {
             withContext(Dispatchers.IO) {
                 try {
+                    android.util.Log.i("IrcEngine_OUT", "Sending raw: $processedResult")
                     writer?.write("$processedResult\r\n")
                     writer?.flush()
                 } catch (e: Exception) {
