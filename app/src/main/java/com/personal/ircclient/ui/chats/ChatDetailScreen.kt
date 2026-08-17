@@ -1105,7 +1105,7 @@ fun ChatDetailScreen(
                     }
 
                     // Auto-scroll logic: stay at bottom if enabled
-                    LaunchedEffect(groupedMessages.size) {
+                    LaunchedEffect(messages.size) {
                         if (autoScrollEnabled) {
                             listState.scrollToItem(0)
                         }
@@ -1187,7 +1187,7 @@ fun ChatDetailScreen(
                                         }
                                     },
                                 shape = MaterialTheme.shapes.extraLarge,
-                                color = Color(settings.otherBubbleColor),
+                                color = MaterialTheme.colorScheme.primary,
                                 shadowElevation = 4.dp
                             ) {
                                 Row(
@@ -1198,13 +1198,13 @@ fun ChatDetailScreen(
                                         Icons.Default.ArrowDownward, 
                                         null, 
                                         modifier = Modifier.size(18.dp),
-                                        tint = getContrastColor(Color(settings.otherBubbleColor))
+                                        tint = MaterialTheme.colorScheme.onPrimary
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text(
                                         text = "New messages", 
                                         style = MaterialTheme.typography.labelMedium,
-                                        color = getContrastColor(Color(settings.otherBubbleColor))
+                                        color = MaterialTheme.colorScheme.onPrimary
                                     )
                                 }
                             }

@@ -1,6 +1,7 @@
 package com.personal.ircclient.core.model
 
 data class IrcMessage(
+    val tags: Map<String, String> = emptyMap(),
     val prefix: String? = null,
     val command: String,
     val parameters: List<String> = emptyList(),
@@ -12,14 +13,21 @@ data class IrcMessage(
             if (line.isBlank()) return null
             
             var remaining = line.trim()
+            val tags = mutableMapOf<String, String>()
             
             // 1. Handle IRCv3 Message Tags (e.g. @tag1=val;tag2 :prefix COMMAND...)
             if (remaining.startsWith("@")) {
                 val spaceIndex = remaining.indexOf(" ")
                 if (spaceIndex != -1) {
+                    val rawTags = remaining.substring(1, spaceIndex)
+                    rawTags.split(";").forEach { tag ->
+                        val parts = tag.split("=", limit = 2)
+                        val key = parts[0]
+                        val value = if (parts.size > 1) unescapeTagValue(parts[1]) else ""
+                        tags[key] = value
+                    }
                     remaining = remaining.substring(spaceIndex + 1).trim()
                 } else {
-                    // Malformed line with only tags
                     return null
                 }
             }
@@ -35,7 +43,6 @@ data class IrcMessage(
             }
             
             // 3. Separate main part and trailing parameter
-            // The trailing part is defined by " :" (space followed by colon)
             val parts = remaining.split(" :", limit = 2)
             val mainPart = parts[0]
             val trailing = if (parts.size > 1) parts[1] else null
@@ -43,7 +50,6 @@ data class IrcMessage(
             // 4. Tokenize command and middle parameters
             val mainTokens = mainPart.split(" ").filter { it.isNotEmpty() }
             if (mainTokens.isEmpty()) {
-                android.util.Log.e("IrcMessage", "Failed to parse command from line: $line")
                 return null
             }
             
@@ -53,12 +59,25 @@ data class IrcMessage(
                 params.add(trailing)
             }
             
-            return IrcMessage(prefix, command, params, line)
+            return IrcMessage(tags, prefix, command, params, line)
+        }
+
+        private fun unescapeTagValue(value: String): String {
+            return value.replace("\\:", ";")
+                .replace("\\s", " ")
+                .replace("\\\\", "\\")
+                .replace("\\r", "\r")
+                .replace("\\n", "\n")
         }
     }
     
     fun build(): String {
         val sb = StringBuilder()
+        if (tags.isNotEmpty()) {
+            sb.append("@")
+            sb.append(tags.entries.joinToString(";") { (k, v) -> if (v.isEmpty()) k else "$k=$v" })
+            sb.append(" ")
+        }
         if (prefix != null) {
             sb.append(":").append(prefix).append(" ")
         }

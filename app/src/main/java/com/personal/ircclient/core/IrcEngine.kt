@@ -124,6 +124,7 @@ class IrcEngine(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private var lastMessageTime = System.currentTimeMillis()
+    private var listStartTime = 0L
     private val motdBuffer = StringBuilder()
     
     private var lastWhoisSource: String? = null
@@ -323,9 +324,11 @@ class IrcEngine(
                     if (caps.contains("sasl") && config.useSasl) req.add("sasl")
                     if (caps.contains("multi-prefix")) req.add("multi-prefix")
                     if (caps.contains("message-tags")) req.add("message-tags")
+                    if (caps.contains("server-time")) req.add("server-time")
                     if (caps.contains("away-notify")) req.add("away-notify")
                     if (caps.contains("account-notify")) req.add("account-notify")
                     if (caps.contains("extended-join")) req.add("extended-join")
+                    if (caps.contains("typing")) req.add("typing")
                     
                     if (req.isNotEmpty()) {
                         send("CAP REQ :${req.joinToString(" ")}")
@@ -447,6 +450,7 @@ class IrcEngine(
             }
             "321" -> { // RPL_LISTSTART
                 repository?.clearDiscovered(serverId)
+                listStartTime = System.currentTimeMillis()
                 if (config.host.contains("chathispano", ignoreCase = true)) {
                     logToStatus("ChatHispano detectado: Iniciando filtro de seguridad antibots (15s)...")
                 }
@@ -456,8 +460,9 @@ class IrcEngine(
                 
                 // Anti-honeypot for ChatHispano: Filter out small/strange channels during first 15s
                 if (config.host.contains("chathispano", ignoreCase = true)) {
+                    val isWithinSafetyPeriod = System.currentTimeMillis() - listStartTime < 15000
                     val isPotentiallyFake = channelName.length > 10 && channelName.any { it.isDigit() } && channelName.any { it.isUpperCase() }
-                    if (isPotentiallyFake) return
+                    if (isWithinSafetyPeriod && isPotentiallyFake) return
                 }
 
                 val userCount = message.parameters.getOrNull(2)?.toIntOrNull() ?: 0
@@ -697,6 +702,20 @@ class IrcEngine(
                     _banLists.value = currentBans
                 }
             }
+            "AWAY" -> {
+                val sender = message.prefix?.substringBefore("!") ?: return
+                val awayMessage = message.parameters.firstOrNull()
+                // Update user state if we were showing it in UI
+                android.util.Log.i("IrcEngine", "User $sender is now ${if (awayMessage != null) "AWAY: $awayMessage" else "BACK"}")
+            }
+            "TAGMSG" -> {
+                val target = message.parameters.getOrNull(0) ?: return
+                val typing = message.tags["+typing"] ?: message.tags["typing"]
+                if (typing != null) {
+                    val sender = message.prefix?.substringBefore("!") ?: ""
+                    android.util.Log.i("IrcEngine", "User $sender is typing in $target: $typing")
+                }
+            }
         }
     }
 
@@ -719,8 +738,25 @@ class IrcEngine(
         }
     }
 
+    private fun parseServerTime(tags: Map<String, String>): Long {
+        val timeTag = tags["time"] ?: return System.currentTimeMillis()
+        return try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                java.time.Instant.parse(timeTag).toEpochMilli()
+            } else {
+                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
+                sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                sdf.parse(timeTag)?.time ?: System.currentTimeMillis()
+            }
+        } catch (e: Exception) {
+            System.currentTimeMillis()
+        }
+    }
+
     private suspend fun saveMessageIfNecessary(message: IrcMessage) {
         if (repository == null) return
+        
+        val serverTimestamp = parseServerTime(message.tags)
 
         when (message.command) {
             "NOTICE" -> {
@@ -746,6 +782,7 @@ class IrcEngine(
                         target = finalTarget,
                         sender = sender,
                         text = text,
+                        timestamp = serverTimestamp,
                         type = MessageType.NOTICE
                     )
                 )
@@ -874,6 +911,7 @@ class IrcEngine(
                                 sender = sender,
                                 text = "* $sender $actionText",
                                 isSystemMessage = false,
+                                timestamp = serverTimestamp,
                                 type = MessageType.TEXT
                             )
                         )
@@ -933,6 +971,7 @@ class IrcEngine(
                         target = finalTarget,
                         sender = sender,
                         text = text,
+                        timestamp = serverTimestamp,
                         isEncrypted = isEncrypted,
                         isModifiedByScript = message.isModifiedByScript,
                         type = MessageType.TEXT
@@ -968,6 +1007,7 @@ class IrcEngine(
                             sender = "Server",
                             text = text,
                             isSystemMessage = true,
+                            timestamp = serverTimestamp,
                             isModifiedByScript = message.isModifiedByScript,
                             type = MessageType.TEXT
                         )
