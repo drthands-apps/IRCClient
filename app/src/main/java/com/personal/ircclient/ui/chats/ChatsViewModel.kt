@@ -615,7 +615,7 @@ class ChatsViewModel(
     }
 
     private fun isChannel(target: String): Boolean {
-        return target.startsWith("#") || target.startsWith("&") || target.startsWith("+") || target.startsWith("!")
+        return target.startsWith("#") || target.startsWith("&") || target.startsWith("+")
     }
 
     private fun normalizeTarget(target: String): String {

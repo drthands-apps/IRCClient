@@ -24,8 +24,6 @@ class IrcRepository(
     suspend fun checkAndInsertDefaultRadioStations() {
         if (radioStationDao.getCount() == 0L) {
             val defaults = listOf(
-                RadioStationEntity(name = "Distrito Sonoro", url = "https://stream.zeno.fm/afd3qhkxz08uv", isDefault = true),
-                RadioStationEntity(name = "Mundo Musica", url = "https://stream.radio-amistad.net:8002/stream", isDefault = true),
                 RadioStationEntity(name = "Slay Radio", url = "http://slayradio.org:8000/", isDefault = true),
                 RadioStationEntity(name = "Radio Paradise", url = "https://stream.radioparadise.com/mp3-192", isDefault = true),
                 RadioStationEntity(name = "Groove Salad", url = "https://ice6.somafm.com/groovesalad-256-mp3", isDefault = true),

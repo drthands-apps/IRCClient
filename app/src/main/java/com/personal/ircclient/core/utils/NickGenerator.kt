@@ -26,7 +26,7 @@ object NickGenerator {
     fun generate(): String {
         val noun = nouns.random()
         val adj = adjectives.random()
-        val num = (100..999).random()
+        val num = (19..99).random() // Range between 19 and 99
         return "$adj$noun$num"
     }
 }

@@ -195,7 +195,7 @@ class IrcEngine(
                 } else if (!settings?.customUserAgent.isNullOrBlank()) {
                     settings!!.customUserAgent
                 } else {
-                    "FenixIRC/${com.personal.ircclient.BuildConfig.VERSION_NAME}"
+                    "IRCClient" // Generic and stealth
                 }
 
                 val finalRealName = if (!config.email.isNullOrBlank()) "$baseRealName (${config.email})" else baseRealName
@@ -695,7 +695,7 @@ class IrcEngine(
         when {
             ctcp == "VERSION" -> {
                 val settings = repository.settings.first()
-                val version = settings?.customUserAgent ?: "FenixIRC/${com.personal.ircclient.BuildConfig.VERSION_NAME}"
+                val version = settings?.customUserAgent ?: "IRCClient"
                 send("NOTICE $sender :\u0001VERSION $version\u0001")
             }
             ctcp == "TIME" -> {
@@ -750,6 +750,11 @@ class IrcEngine(
                 val rawTarget = message.parameters.getOrNull(0) ?: return
                 var text = message.parameters.getOrNull(1) ?: ""
                 val sender = message.prefix?.substringBefore("!") ?: "system"
+                
+                // Stealth & Filter Bypass for Services (System bots)
+                val systemServices = listOf("NickServ", "ChanServ", "MemoServ", "Global", "OperServ", "InfoServ")
+                val isSystemService = systemServices.any { it.equals(sender, ignoreCase = true) }
+
                 val hostmask = message.prefix?.substringAfter("!", "")
 
                 // Protocol filtering: IP_lookup or self-messages about modes
@@ -792,7 +797,7 @@ class IrcEngine(
                 // Privacy check for Private Messages
                 if (isPrivateToMe) {
                     val settings = repository.settings.firstOrNull()
-                    if (settings?.allowPrivateOnlyFromFriends == true) {
+                    if (settings?.allowPrivateOnlyFromFriends == true && !isSystemService) {
                         val isFriend = user?.isFriend == true
                         if (!isFriend) {
                             // Auto-respond once per session/period? For now just respond.

@@ -60,6 +60,7 @@ import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 
@@ -103,7 +104,7 @@ fun ChatDetailScreen(
 
     var textFieldValue by remember { mutableStateOf(TextFieldValue("")) }
     val isStatus = target == "Status"
-    val isChannel = target.startsWith("#") || target.startsWith("&") || target.startsWith("+") || target.startsWith("!")
+    val isChannel = target.startsWith("#") || target.startsWith("&") || target.startsWith("+")
     val isUser = !isStatus && !isChannel
     val isPro = com.personal.ircclient.BuildConfig.FLAVOR == "pro" || 
                 contextAndroid.packageName.contains(".pro", ignoreCase = true)
@@ -149,6 +150,7 @@ fun ChatDetailScreen(
     var showAsciiSelector by remember { mutableStateOf<String?>(null) } // target user nick
     var searchQuery by remember { mutableStateOf("") }
     val asciiArtItems by viewModel.asciiArt.collectAsState()
+    var autoScrollEnabled by remember(serverId, target) { mutableStateOf(true) }
 
     if (isProcessingMedia) {
         AlertDialog(
@@ -655,7 +657,7 @@ fun ChatDetailScreen(
                                             text = { Text(Localizer.getString("ignore", settings.language) + " (Temporal)") },
                                             onClick = { showUserMenu = false; viewModel.ignoreUser(serverId, nick, UserStatus.TEMPORAL) }
                                         )
-                                        if (amIOp) {
+                                        if (amIOp && isPro) {
                                             val isOp = userInfo.prefix == "@" || userInfo.prefix == "&" || userInfo.prefix == "~"
                                             DropdownMenuItem(
                                                 text = { Text(if (isOp) Localizer.getString("deop_user", lang) else Localizer.getString("op_user", lang)) },
@@ -811,8 +813,13 @@ fun ChatDetailScreen(
                                         HorizontalDivider()
                                     }
                                     
-                                    val availableCommands = viewModel.getAvailableCommands(serverId, target, amIOp)
-                                    availableCommands.forEach { cmd ->
+                                    val availableCommands = viewModel.getAvailableCommands(serverId, target, if (isPro) amIOp else false)
+                                    availableCommands.filter { 
+                                        if (!isPro) {
+                                            // Restricted commands for Lite
+                                            it !in listOf("KICK", "BAN", "KICKBAN", "OP", "DEOP", "VOICE", "DEVOICE", "MODE")
+                                        } else true 
+                                    }.forEach { cmd ->
                                         if (cmd == "PART" || cmd == "QUIT") {
                                             HorizontalDivider()
                                         }
@@ -995,34 +1002,7 @@ fun ChatDetailScreen(
                                 onValueChange = { textFieldValue = it },
                                 modifier = Modifier.fillMaxWidth(),
                                 placeholder = { Text(if (isStatus) Localizer.getString("enter_command", lang) else Localizer.getString("typing_message", lang)) },
-                                leadingIcon = if (showMultimediaIcons) {
-                                    {
-                                        Box {
-                                            IconButton(onClick = { 
-                                                showMultimediaWarning = { showAttachMenu = true }
-                                            }) {
-                                                Icon(Icons.Default.Add, contentDescription = null)
-                                            }
-                                            DropdownMenu(expanded = showAttachMenu, onDismissRequest = { showAttachMenu = false }) {
-                                                DropdownMenuItem(
-                                                    text = { Text("Image") },
-                                                    leadingIcon = { Icon(Icons.Default.Image, null) },
-                                                    onClick = { showAttachMenu = false; imageLauncher.launch("image/*") }
-                                                )
-                                                DropdownMenuItem(
-                                                    text = { Text("Audio File") },
-                                                    leadingIcon = { Icon(Icons.Default.AudioFile, null) },
-                                                    onClick = { showAttachMenu = false; audioLauncher.launch("audio/*") }
-                                                )
-                                                DropdownMenuItem(
-                                                    text = { Text(Localizer.getString("attach_file", lang)) },
-                                                    leadingIcon = { Icon(Icons.Default.AttachFile, null) },
-                                                    onClick = { showAttachMenu = false; fileLauncher.launch("*/*") }
-                                                )
-                                            }
-                                        }
-                                    }
-                                } else null
+                                leadingIcon = null
                             )
 
                             if (showNickSuggestions) {
@@ -1059,49 +1039,6 @@ fun ChatDetailScreen(
                                 }
                             }
                         }
-                        if (showMultimediaIcons) {
-                            IconButton(onClick = { 
-                                if (isRecording) {
-                                    isProcessingMedia = true
-                                    scope.launch(Dispatchers.IO) {
-                                        try {
-                                            val file = recorder.stopRecording()
-                                            if (file != null) {
-                                                if (isEncryptedChat) {
-                                                    viewModel.sendFsrMedia(serverId, target, MessageType.VOICE, file)
-                                                    scope.launch(Dispatchers.Main) { isProcessingMedia = false }
-                                                } else {
-                                                    FileUploader.uploadFile(file) { url ->
-                                                        scope.launch(Dispatchers.Main) {
-                                                            if (url != null) {
-                                                                mediaToSend = MessageType.VOICE to url
-                                                                showTtlDialog = true
-                                                            }
-                                                            isProcessingMedia = false
-                                                        }
-                                                    }
-                                                }
-                                            } else {
-                                                scope.launch(Dispatchers.Main) { isProcessingMedia = false }
-                                            }
-                                        } catch (e: Exception) {
-                                            scope.launch(Dispatchers.Main) { isProcessingMedia = false }
-                                        }
-                                    }
-                                    isRecording = false
-                                } else {
-                                    showMultimediaWarning = {
-                                        recordPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-                                    }
-                                }
-                            }) {
-                                Icon(
-                                    imageVector = if (isRecording) Icons.Default.StopCircle else Icons.Default.Mic, 
-                                    contentDescription = null,
-                                    tint = if (isRecording) Color.Red else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
                         IconButton(onClick = {
                             if (textFieldValue.text.isNotBlank()) {
                                 autoScrollEnabled = true
@@ -1117,54 +1054,8 @@ fun ChatDetailScreen(
         ) { padding ->
             Box(modifier = Modifier.padding(padding)) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    if (settings.isRadioPluginEnabled) {
-                        val streamUrl = settings.selectedRadioUrl
-                        val radioName = settings.selectedRadioName
-                        
-                        if (streamUrl.isNotEmpty()) {
-                            Card(
-                                modifier = Modifier.fillMaxWidth().padding(8.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                            ) {
-                                val isPlaying by RadioPlayer.isPlaying.collectAsState()
-                                val currentUrl by RadioPlayer.currentUrl.collectAsState()
-                                val isCurrentStation = currentUrl == streamUrl && isPlaying
-
-                                Row(
-                                    modifier = Modifier.padding(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                        Icon(
-                                            imageVector = if (isCurrentStation) Icons.Default.PauseCircle else Icons.Default.Radio, 
-                                            contentDescription = null,
-                                            tint = if (isCurrentStation) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSecondaryContainer
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(
-                                            text = if (isCurrentStation) "Playing $radioName..." else "Radio: $radioName", 
-                                            style = MaterialTheme.typography.titleSmall,
-                                            maxLines = 1
-                                        )
-                                    }
-                                    Row {
-                                        IconButton(onClick = {
-                                            RadioPlayer.play(contextAndroid, streamUrl)
-                                        }) {
-                                            Icon(
-                                                imageVector = if (isCurrentStation) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                                contentDescription = null
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
                     val listState = rememberLazyListState()
-                    var autoScrollEnabled by remember(serverId, target) { mutableStateOf(true) }
+                    val isDragged by listState.interactionSource.collectIsDraggedAsState()
                     
                     // Logic to group consecutive messages from the same sender
                     val groupedMessages = remember(messages) {
@@ -1213,9 +1104,8 @@ fun ChatDetailScreen(
                     }
 
                     // Detection of manual scroll up to disable auto-scroll
-                    // Only disable if the user manually drags the list away from the bottom
-                    LaunchedEffect(listState.isScrollInProgress) {
-                        if (listState.isScrollInProgress && listState.firstVisibleItemIndex > 2) {
+                    LaunchedEffect(isDragged) {
+                        if (isDragged && listState.firstVisibleItemIndex > 0) {
                             autoScrollEnabled = false
                         }
                     }
@@ -1310,6 +1200,8 @@ fun MessageBubble(
     val isStatus = msg.target == "Status"
     val isMe = msg.sender == "me" || msg.sender == myNick
     val isSystem = msg.isSystemMessage
+    val isPro = com.personal.ircclient.BuildConfig.FLAVOR == "pro" || 
+                contextAndroid.packageName.contains(".pro", ignoreCase = true)
     var showMenu by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
@@ -1744,7 +1636,7 @@ fun MessageBubble(
                     text = { Text(Localizer.getString("ignore", settings.language) + " (Temporal)") },
                     onClick = { showMenu = false; viewModel.ignoreUser(serverId, msg.sender, UserStatus.TEMPORAL) }
                 )
-                if (amIOp) {
+                if (amIOp && isPro) {
                     val isOp = senderPrefix == "@" || senderPrefix == "&" || senderPrefix == "~"
                     DropdownMenuItem(
                         text = { Text(if (isOp) Localizer.getString("deop_user", lang) else Localizer.getString("op_user", lang)) },
