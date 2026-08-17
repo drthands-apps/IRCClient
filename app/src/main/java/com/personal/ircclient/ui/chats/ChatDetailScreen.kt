@@ -1060,13 +1060,25 @@ fun ChatDetailScreen(
                     val isDragged by listState.interactionSource.collectIsDraggedAsState()
                     
                     // Logic to group consecutive messages from the same sender
+                    val initialUnreadCount = remember(serverId, target) { currentTargetInfo?.unreadCount ?: 0 }
+                    
                     val groupedMessages = remember(messages) {
-                        val result = mutableListOf<MessageGroup>()
+                        val result = mutableListOf<Any>() // Can be MessageGroup or String (for separator)
                         val chronological = messages.reversed()
                         
                         var currentGroup: MutableList<MessageEntity>? = null
+                        val unreadIndex = chronological.size - initialUnreadCount
                         
-                        chronological.forEach { msg ->
+                        chronological.forEachIndexed { index, msg ->
+                            // Insert separator if we reached the unread boundary
+                            if (initialUnreadCount > 0 && index == unreadIndex) {
+                                if (currentGroup != null) {
+                                    result.add(MessageGroup(currentGroup!![0].id, currentGroup!!))
+                                    currentGroup = null
+                                }
+                                result.add("SEPARATOR")
+                            }
+
                             val prevMsg = currentGroup?.lastOrNull()
                             
                             val sameSender = prevMsg != null && prevMsg.sender == msg.sender
@@ -1095,14 +1107,22 @@ fun ChatDetailScreen(
                     // Auto-scroll logic: stay at bottom if enabled
                     LaunchedEffect(messages.size) {
                         if (autoScrollEnabled) {
-                            listState.scrollToItem(0)
+                            listState.animateScrollToItem(0)
                         }
                     }
 
-                    // Force auto-scroll on initial load for this target
+                    // Reset auto-scroll on entrance and adjust for keyboard
                     LaunchedEffect(serverId, target) {
                         autoScrollEnabled = true
                         listState.scrollToItem(0)
+                    }
+
+                    // React to keyboard visibility
+                    val isKeyboardVisible = WindowInsets.ime.asPaddingValues().calculateBottomPadding() > 0.dp
+                    LaunchedEffect(isKeyboardVisible) {
+                        if (isKeyboardVisible && autoScrollEnabled) {
+                            listState.animateScrollToItem(0)
+                        }
                     }
 
                     // Detection of manual scroll up to disable auto-scroll
@@ -1125,24 +1145,30 @@ fun ChatDetailScreen(
                             reverseLayout = true,
                             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp)
                         ) {
-                            items(groupedMessages, key = { it.id }) { group ->
-                                val firstMsg = group.messages[0]
-                                val senderInfo = channelUsers.find { it.nickname == firstMsg.sender }
-                                MessageBubble(
-                                    group = group,
-                                    serverId = serverId,
-                                    myNick = myNick,
-                                    amIOp = amIOp,
-                                    isFriend = friends.contains(firstMsg.sender),
-                                    senderPrefix = senderInfo?.prefix ?: "",
-                                    onAction = handleSend,
-                                    onTextChange = { textFieldValue = it },
-                                    viewModel = viewModel,
-                                    settings = settings,
-                                    onNavigateToChat = onNavigateToChat,
-                                    contextAndroid = contextAndroid,
-                                    senderInfo = senderInfo
-                                )
+                            items(groupedMessages, key = { 
+                                if (it is MessageGroup) it.id else "UNREAD_SEPARATOR"
+                            }) { item ->
+                                if (item is MessageGroup) {
+                                    val firstMsg = item.messages[0]
+                                    val senderInfo = channelUsers.find { it.nickname == firstMsg.sender }
+                                    MessageBubble(
+                                        group = item,
+                                        serverId = serverId,
+                                        myNick = myNick,
+                                        amIOp = amIOp,
+                                        isFriend = friends.contains(firstMsg.sender),
+                                        senderPrefix = senderInfo?.prefix ?: "",
+                                        onAction = handleSend,
+                                        onTextChange = { textFieldValue = it },
+                                        viewModel = viewModel,
+                                        settings = settings,
+                                        onNavigateToChat = onNavigateToChat,
+                                        contextAndroid = contextAndroid,
+                                        senderInfo = senderInfo
+                                    )
+                                } else {
+                                    UnreadSeparator(settings)
+                                }
                             }
                             item {
                                 Spacer(modifier = Modifier.height(100.dp))
@@ -1179,6 +1205,40 @@ fun ChatDetailScreen(
             }
         }
     }
+}
+
+@Composable
+fun UnreadSeparator(settings: com.personal.ircclient.data.local.entities.SettingsEntity) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        HorizontalDivider(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
+            thickness = 1.dp,
+            color = Color(settings.otherBubbleColor).copy(alpha = 0.3f)
+        )
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = Color(settings.otherBubbleColor),
+            shadowElevation = 2.dp
+        ) {
+            Text(
+                text = "New messages",
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = getContrastColor(Color(settings.otherBubbleColor)),
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+private fun getContrastColor(backgroundColor: Color): Color {
+    val luminance = (0.299 * backgroundColor.red + 0.587 * backgroundColor.green + 0.114 * backgroundColor.blue)
+    return if (luminance > 0.5) Color.Black else Color.White
 }
 
 @Composable
@@ -1298,11 +1358,12 @@ fun MessageBubble(
                                 Text(
                                     text = if (senderPrefix.isNotEmpty()) "$senderPrefix${msg.sender}" else msg.sender, 
                                     style = MaterialTheme.typography.labelSmall, 
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    color = getContrastColor(Color(settings.otherBubbleColor))
                                 )
                                 if (isFriend) {
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFF4500), modifier = Modifier.size(12.dp))
+                                    Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(12.dp))
                                 }
                             }
                         } else if (isMe) {
@@ -1311,14 +1372,19 @@ fun MessageBubble(
                                     Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color.Green)
                                     Spacer(modifier = Modifier.width(4.dp))
                                 }
-                                Text(text = myNick, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(settings.ownMessageColor))
+                                Text(
+                                    text = myNick, 
+                                    style = MaterialTheme.typography.labelSmall, 
+                                    fontWeight = FontWeight.Bold, 
+                                    color = getContrastColor(Color(settings.ownBubbleColor))
+                                )
                             }
                         }
                         
                         Text(
                             text = timeFormatter.format(Date(msg.timestamp)),
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            color = getContrastColor(if (isMe) Color(settings.ownBubbleColor) else Color(settings.otherBubbleColor)).copy(alpha = 0.6f),
                             modifier = Modifier.padding(start = 8.dp)
                         )
                     }
@@ -1350,7 +1416,7 @@ fun MessageBubble(
                                                 lineHeight = 9.sp,
                                                 fontFamily = FontFamily.Monospace,
                                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                                color = getContrastColor(if (isMe) Color(settings.ownBubbleColor) else Color(settings.otherBubbleColor)).copy(alpha = 0.8f)
                                             ),
                                             modifier = Modifier.fillMaxWidth(),
                                             maxLines = 1,
@@ -1367,7 +1433,7 @@ fun MessageBubble(
                                     fontSize = if (isStatus) 10.sp else 14.sp,
                                     lineHeight = if (isStatus) 12.sp else 20.sp,
                                     textAlign = if (isSystem) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = getContrastColor(if (isMe) Color(settings.ownBubbleColor) else Color(settings.otherBubbleColor))
                                 ),
                                 modifier = if (isSystem) Modifier.fillMaxWidth() else Modifier,
                                 onClick = { offset ->
