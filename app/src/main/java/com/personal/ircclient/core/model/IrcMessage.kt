@@ -11,9 +11,21 @@ data class IrcMessage(
         fun parse(line: String): IrcMessage? {
             if (line.isBlank()) return null
             
-            var remaining = line
-            var prefix: String? = null
+            var remaining = line.trim()
             
+            // 1. Handle IRCv3 Message Tags (e.g. @tag1=val;tag2 :prefix COMMAND...)
+            if (remaining.startsWith("@")) {
+                val spaceIndex = remaining.indexOf(" ")
+                if (spaceIndex != -1) {
+                    remaining = remaining.substring(spaceIndex + 1).trim()
+                } else {
+                    // Malformed line with only tags
+                    return null
+                }
+            }
+            
+            // 2. Extract Prefix (if exists)
+            var prefix: String? = null
             if (remaining.startsWith(":")) {
                 val spaceIndex = remaining.indexOf(" ")
                 if (spaceIndex != -1) {
@@ -22,14 +34,20 @@ data class IrcMessage(
                 }
             }
             
+            // 3. Separate main part and trailing parameter
+            // The trailing part is defined by " :" (space followed by colon)
             val parts = remaining.split(" :", limit = 2)
             val mainPart = parts[0]
             val trailing = if (parts.size > 1) parts[1] else null
             
+            // 4. Tokenize command and middle parameters
             val mainTokens = mainPart.split(" ").filter { it.isNotEmpty() }
-            if (mainTokens.isEmpty()) return null
+            if (mainTokens.isEmpty()) {
+                android.util.Log.e("IrcMessage", "Failed to parse command from line: $line")
+                return null
+            }
             
-            val command = mainTokens[0]
+            val command = mainTokens[0].uppercase()
             val params = mainTokens.drop(1).toMutableList()
             if (trailing != null) {
                 params.add(trailing)

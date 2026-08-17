@@ -114,6 +114,8 @@ fun ChatDetailScreen(
     // UI Constraint: Strictly hidden in channels/status. 
     // In privates: Only visible if Pro AND Encrypted.
     val showMultimediaIcons = isUser && isPro && isEncryptedChat
+    
+    android.util.Log.i("ChatDetailUI", "Target: $target, isUser: $isUser, isPro: $isPro, isEnc: $isEncryptedChat -> showIcons: $showMultimediaIcons")
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()

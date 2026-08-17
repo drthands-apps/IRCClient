@@ -63,6 +63,14 @@ class IrcApplication : Application() {
         val servers = repository.allServers.first()
         if (servers.isEmpty()) {
             repository.insertServer(com.personal.ircclient.data.local.entities.ServerEntity(
+                name = "ChatHispano",
+                host = "irc.chathispano.com",
+                port = 6667,
+                nickname = "FenixUser",
+                username = "fenix_rand",
+                generateRandomNick = true
+            ))
+            repository.insertServer(com.personal.ircclient.data.local.entities.ServerEntity(
                 name = "Libera.Chat",
                 host = "irc.libera.chat",
                 port = 6697,
@@ -85,12 +93,6 @@ class IrcApplication : Application() {
             repository.insertServer(com.personal.ircclient.data.local.entities.ServerEntity(
                 name = "Undernet",
                 host = "irc.undernet.org",
-                port = 6667,
-                nickname = "FenixUser"
-            ))
-            repository.insertServer(com.personal.ircclient.data.local.entities.ServerEntity(
-                name = "QuakeNet",
-                host = "irc.quakenet.org",
                 port = 6667,
                 nickname = "FenixUser"
             ))

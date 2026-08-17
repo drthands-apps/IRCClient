@@ -289,6 +289,7 @@ class IrcEngine(
             try {
                 while (isActive) {
                     val line = reader?.readLine() ?: break
+                    android.util.Log.i("IrcEngine_RAW_IN", line)
                     lastMessageTime = System.currentTimeMillis()
                     
                     val rawMessage = IrcMessage.parse(line) ?: continue
@@ -752,7 +753,7 @@ class IrcEngine(
                 val sender = message.prefix?.substringBefore("!") ?: "system"
                 
                 // Stealth & Filter Bypass for Services (System bots)
-                val systemServices = listOf("NickServ", "ChanServ", "MemoServ", "Global", "OperServ", "InfoServ")
+                val systemServices = listOf("NickServ", "ChanServ", "MemoServ", "Global", "OperServ", "InfoServ", "News", "StatServ")
                 val isSystemService = systemServices.any { it.equals(sender, ignoreCase = true) }
 
                 val hostmask = message.prefix?.substringAfter("!", "")
