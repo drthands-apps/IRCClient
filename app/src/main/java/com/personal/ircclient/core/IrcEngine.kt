@@ -447,9 +447,19 @@ class IrcEngine(
             }
             "321" -> { // RPL_LISTSTART
                 repository?.clearDiscovered(serverId)
+                if (config.host.contains("chathispano", ignoreCase = true)) {
+                    logToStatus("ChatHispano detectado: Iniciando filtro de seguridad antibots (15s)...")
+                }
             }
             "322" -> { // RPL_LIST
                 val channelName = message.parameters.getOrNull(1) ?: return
+                
+                // Anti-honeypot for ChatHispano: Filter out small/strange channels during first 15s
+                if (config.host.contains("chathispano", ignoreCase = true)) {
+                    val isPotentiallyFake = channelName.length > 10 && channelName.any { it.isDigit() } && channelName.any { it.isUpperCase() }
+                    if (isPotentiallyFake) return
+                }
+
                 val userCount = message.parameters.getOrNull(2)?.toIntOrNull() ?: 0
                 val topic = message.parameters.getOrNull(3) ?: ""
                 repository?.insertDiscovered(

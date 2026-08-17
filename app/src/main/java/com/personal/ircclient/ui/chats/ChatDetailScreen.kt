@@ -1105,9 +1105,9 @@ fun ChatDetailScreen(
                     }
 
                     // Auto-scroll logic: stay at bottom if enabled
-                    LaunchedEffect(messages.size) {
+                    LaunchedEffect(groupedMessages.size) {
                         if (autoScrollEnabled) {
-                            listState.animateScrollToItem(0)
+                            listState.scrollToItem(0)
                         }
                     }
 
@@ -1187,16 +1187,25 @@ fun ChatDetailScreen(
                                         }
                                     },
                                 shape = MaterialTheme.shapes.extraLarge,
-                                color = MaterialTheme.colorScheme.primaryContainer,
+                                color = Color(settings.otherBubbleColor),
                                 shadowElevation = 4.dp
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.ArrowDownward, null, modifier = Modifier.size(18.dp))
+                                    Icon(
+                                        Icons.Default.ArrowDownward, 
+                                        null, 
+                                        modifier = Modifier.size(18.dp),
+                                        tint = getContrastColor(Color(settings.otherBubbleColor))
+                                    )
                                     Spacer(Modifier.width(8.dp))
-                                    Text("New messages", style = MaterialTheme.typography.labelMedium)
+                                    Text(
+                                        text = "New messages", 
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = getContrastColor(Color(settings.otherBubbleColor))
+                                    )
                                 }
                             }
                         }
@@ -1322,21 +1331,25 @@ fun MessageBubble(
                 }
             },
             enableDismissFromStartToEnd = false,
-            modifier = Modifier.fillMaxWidth(if (isSystem) 1f else 0.85f)
+                modifier = Modifier.fillMaxWidth(if (isSystem) 1f else 0.85f)
         ) {
+            val bubbleColor = when {
+                msg.type == MessageType.NOTICE -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.8f)
+                msg.type == MessageType.BAN -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.9f)
+                isMe -> Color(settings.ownBubbleColor)
+                isStatus || isSystem -> MaterialTheme.colorScheme.surfaceVariant
+                else -> Color(settings.otherBubbleColor)
+            }
+            val contentColor = getContrastColor(bubbleColor)
+            
             Surface(
                 shape = MaterialTheme.shapes.medium,
-                color = when {
-                    msg.type == MessageType.NOTICE -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.8f)
-                    msg.type == MessageType.BAN -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.9f)
-                    isMe -> Color(settings.ownBubbleColor)
-                    isStatus || isSystem -> MaterialTheme.colorScheme.surfaceVariant
-                    else -> Color(settings.otherBubbleColor)
-                },
+                color = bubbleColor,
+                contentColor = contentColor,
                 border = when {
                     msg.type == MessageType.NOTICE -> BorderStroke(2.dp, MaterialTheme.colorScheme.tertiary)
                     msg.type == MessageType.BAN -> BorderStroke(2.dp, MaterialTheme.colorScheme.error)
-                    isMe -> BorderStroke(1.dp, Color(settings.otherBubbleColor))
+                    isMe -> BorderStroke(1.dp, Color(settings.otherBubbleColor).copy(alpha = 0.5f))
                     else -> null
                 },
                 modifier = Modifier.padding(vertical = 4.dp, horizontal = 12.dp).fillMaxWidth()
@@ -1359,7 +1372,7 @@ fun MessageBubble(
                                     text = if (senderPrefix.isNotEmpty()) "$senderPrefix${msg.sender}" else msg.sender, 
                                     style = MaterialTheme.typography.labelSmall, 
                                     fontWeight = FontWeight.Bold,
-                                    color = getContrastColor(Color(settings.otherBubbleColor))
+                                    color = contentColor
                                 )
                                 if (isFriend) {
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -1376,7 +1389,7 @@ fun MessageBubble(
                                     text = myNick, 
                                     style = MaterialTheme.typography.labelSmall, 
                                     fontWeight = FontWeight.Bold, 
-                                    color = getContrastColor(Color(settings.ownBubbleColor))
+                                    color = if (contentColor == Color.White) Color(0xFFBB86FC) else Color(0xFF6200EE) 
                                 )
                             }
                         }
@@ -1384,7 +1397,7 @@ fun MessageBubble(
                         Text(
                             text = timeFormatter.format(Date(msg.timestamp)),
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                            color = getContrastColor(if (isMe) Color(settings.ownBubbleColor) else Color(settings.otherBubbleColor)).copy(alpha = 0.6f),
+                            color = contentColor.copy(alpha = 0.7f),
                             modifier = Modifier.padding(start = 8.dp)
                         )
                     }
@@ -1403,7 +1416,7 @@ fun MessageBubble(
                         
                         if (isDrawing) {
                             Surface(
-                                color = Color.Black.copy(alpha = 0.05f),
+                                color = if (contentColor == Color.White) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.05f),
                                 shape = MaterialTheme.shapes.small,
                                 modifier = Modifier.padding(top = 4.dp).fillMaxWidth()
                             ) {
@@ -1416,7 +1429,7 @@ fun MessageBubble(
                                                 lineHeight = 9.sp,
                                                 fontFamily = FontFamily.Monospace,
                                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                                color = getContrastColor(if (isMe) Color(settings.ownBubbleColor) else Color(settings.otherBubbleColor)).copy(alpha = 0.8f)
+                                                color = contentColor.copy(alpha = 0.9f)
                                             ),
                                             modifier = Modifier.fillMaxWidth(),
                                             maxLines = 1,
@@ -1433,7 +1446,7 @@ fun MessageBubble(
                                     fontSize = if (isStatus) 10.sp else 14.sp,
                                     lineHeight = if (isStatus) 12.sp else 20.sp,
                                     textAlign = if (isSystem) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
-                                    color = getContrastColor(if (isMe) Color(settings.ownBubbleColor) else Color(settings.otherBubbleColor))
+                                    color = contentColor
                                 ),
                                 modifier = if (isSystem) Modifier.fillMaxWidth() else Modifier,
                                 onClick = { offset ->
